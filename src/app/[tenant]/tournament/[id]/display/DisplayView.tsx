@@ -185,6 +185,16 @@ export function DisplayView({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Sync the display's dark mode state to the <html> class so all
+  // dark: Tailwind variants reflect the display toggle, not the OS preference.
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [darkMode]);
+
   const computed = useMemo(() => {
     if (!data) return null;
     const playerMap = new Map<string, Player>();
