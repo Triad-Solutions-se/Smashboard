@@ -337,6 +337,7 @@ function Dashboard({
         <SectionLabel>Runda {tournament.current_round}</SectionLabel>
         {currentMatch ? (
           <MatchCard
+            key={currentMatch.id}
             match={currentMatch}
             myTeamId={selectedTeamId}
             teamMap={teamMap}
