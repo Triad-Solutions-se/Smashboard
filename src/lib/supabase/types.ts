@@ -4,6 +4,7 @@ export type Tenant = {
   name: string;
   primary_color: string | null;
   logo_url: string | null;
+  logo_url_dark: string | null;
   created_at: string;
 };
 

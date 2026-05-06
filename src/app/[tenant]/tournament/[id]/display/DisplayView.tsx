@@ -54,6 +54,7 @@ export function DisplayView({
 }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [now, setNow] = useState<Date>(() => new Date());
+  const [darkMode, setDarkMode] = useState(false);
 
   const load = useCallback(async () => {
     const [tRes, gRes, mRes, teamsRes, courtsRes] = await Promise.all([
@@ -173,6 +174,15 @@ export function DisplayView({
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(t);
+  }, []);
+
+  // Press D to toggle dark / light mode on the TV display.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "d" || e.key === "D") setDarkMode((v) => !v);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const computed = useMemo(() => {
@@ -367,12 +377,13 @@ export function DisplayView({
 
   return (
     <div
-      className="h-screen w-screen bg-zinc-50 text-zinc-900 overflow-hidden flex flex-col"
+      className={`h-screen w-screen overflow-hidden flex flex-col ${darkMode ? "dark bg-zinc-950 text-zinc-100" : "bg-zinc-50 text-zinc-900"}`}
       style={
         {
           "--accent": accent,
-          backgroundImage:
-            "radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%)",
+          backgroundImage: darkMode
+            ? `radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%)`
+            : `radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%)`,
         } as React.CSSProperties
       }
     >
@@ -383,6 +394,8 @@ export function DisplayView({
         timeLabel={timeLabel}
         completed={computed.completed}
         total={computed.total}
+        darkMode={darkMode}
+        onToggleDark={() => setDarkMode((v) => !v)}
       />
 
       <main className="flex-1 min-h-0 px-[1.5vw] py-[1vh] flex gap-[1vw]">
@@ -497,7 +510,7 @@ function RestingChip({
               }}
             >
               <span
-                className="font-semibold text-zinc-700"
+                className="font-semibold text-zinc-700 dark:text-zinc-300"
                 style={{ fontSize: "clamp(0.65rem, 0.9vw, 1.1rem)" }}
               >
                 {shortName(p1)}{p2 ? ` & ${shortName(p2)}` : ""}
@@ -587,7 +600,7 @@ function KOView({
       {/* Stage header row */}
       <div className="flex items-center gap-[1vw] flex-wrap">
         <span
-          className="font-bold uppercase tracking-widest text-zinc-400"
+          className="font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500"
           style={{ fontSize: "clamp(0.6rem, 0.85vw, 1rem)" }}
         >
           Slutspel
@@ -666,6 +679,8 @@ function Header({
   timeLabel,
   completed,
   total,
+  darkMode,
+  onToggleDark,
 }: {
   tenant: Tenant;
   tournament: Tournament;
@@ -673,6 +688,8 @@ function Header({
   timeLabel: string;
   completed: number;
   total: number;
+  darkMode: boolean;
+  onToggleDark: () => void;
 }) {
   const [playUrl, setPlayUrl] = useState<string | null>(null);
 
@@ -680,52 +697,51 @@ function Header({
     setPlayUrl(`${window.location.origin}/${tenant.slug}/tournament/${tournament.id}/play`);
   }, [tenant.slug, tournament.id]);
 
+  const dim = darkMode ? "text-zinc-400" : "text-zinc-500";
+  const mid = darkMode ? "text-zinc-300" : "text-zinc-600";
+  const strong = darkMode ? "text-zinc-200" : "text-zinc-700";
+  const divider = darkMode ? "bg-zinc-600" : "bg-zinc-300";
+  const border = darkMode ? "border-zinc-700" : "border-zinc-200";
+
+  const tenantLogoSrc = darkMode
+    ? (tenant.logo_url_dark || tenant.logo_url)
+    : tenant.logo_url;
+  const triadLogoSrc = darkMode ? "/icons/triad-logo-white.png" : "/icons/triad-logo.png";
+
   return (
-    <header className="px-[2vw] pt-[1.2vh] pb-[1vh] grid grid-cols-3 items-center gap-4 border-b border-zinc-200">
+    <header className={`px-[2vw] h-[9vh] grid grid-cols-3 items-stretch gap-4 border-b ${border}`}>
       {/* Left: tournament info */}
-      <div className="min-w-0">
+      <div className="min-w-0 flex flex-col justify-center">
         <div
-          className="font-black tracking-tight leading-none truncate text-zinc-900"
+          className={`font-black tracking-tight leading-none truncate ${darkMode ? "text-zinc-100" : "text-zinc-900"}`}
           style={{ fontSize: "clamp(1.2rem, 2.2vw, 2.5rem)" }}
         >
           {tournament.name}
         </div>
         <div
-          className="mt-1 flex items-center gap-2 truncate"
+          className={`mt-1 flex items-center gap-2 truncate ${dim}`}
           style={{ fontSize: "clamp(0.7rem, 0.9vw, 1rem)" }}
         >
-          <span className="font-semibold text-zinc-700">{tenant.name}</span>
-          <span
-            className="inline-block w-px bg-zinc-300"
-            style={{ height: "0.9em" }}
-            aria-hidden="true"
-          />
-          <span className="text-zinc-600">
-            {FORMAT_LABEL[tournament.format]}
-          </span>
-          <span
-            className="inline-block w-px bg-zinc-300"
-            style={{ height: "0.9em" }}
-            aria-hidden="true"
-          />
-          <span className="text-zinc-500 tabular-nums">
-            Mål {tournament.games_per_match} game
-          </span>
+          <span className={`font-semibold ${strong}`}>{tenant.name}</span>
+          <span className={`inline-block w-px ${divider}`} style={{ height: "0.9em" }} aria-hidden="true" />
+          <span className={mid}>{FORMAT_LABEL[tournament.format]}</span>
+          <span className={`inline-block w-px ${divider}`} style={{ height: "0.9em" }} aria-hidden="true" />
+          <span className={`tabular-nums ${dim}`}>Mål {tournament.games_per_match} game</span>
         </div>
       </div>
 
-      {/* Center: brand logo × Triad Solutions logo */}
-      <div className="flex items-center justify-center gap-[1.2vw]">
-        {tenant.logo_url ? (
+      {/* Center: brand logo × Triad Solutions logo — fills full banner height */}
+      <div className="flex items-stretch justify-center gap-[1.5vw] py-[0.6vh]">
+        {tenantLogoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={tenant.logo_url}
+            src={tenantLogoSrc}
             alt={tenant.name}
-            className="h-[4.5vh] w-auto object-contain"
+            className="h-full w-auto object-contain"
           />
         ) : (
           <div
-            className="h-[4.5vh] aspect-square rounded-lg flex items-center justify-center font-black"
+            className="h-full aspect-square rounded-lg flex items-center justify-center font-black"
             style={{
               backgroundColor: `${accent}20`,
               color: accent,
@@ -736,28 +752,29 @@ function Header({
           </div>
         )}
         <span
-          className="font-black text-zinc-300 leading-none select-none"
-          style={{ fontSize: "clamp(1.2rem, 2vw, 2.2rem)" }}
+          className={`self-center font-black leading-none select-none ${darkMode ? "text-white" : "text-black"}`}
+          style={{ fontSize: "clamp(1.4rem, 2.2vw, 2.6rem)" }}
         >
           ×
         </span>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/icons/triad-logo.png"
+          src={triadLogoSrc}
           alt="Triad Solutions"
-          className="h-[4.5vh] w-auto object-contain"
+          className="h-full w-auto object-contain"
+          style={darkMode ? { filter: "brightness(0) invert(1)" } : undefined}
         />
       </div>
 
-      {/* Right: QR code + live indicator */}
-      <div className="flex items-center justify-end gap-[1.5vw] shrink-0">
+      {/* Right: QR code + live indicator + dark mode toggle */}
+      <div className="flex items-center justify-end gap-[1.5vw]">
         {playUrl && (
           <div className="flex items-center gap-[0.6vw]">
-            <div style={{ fontSize: "clamp(0.5rem, 0.7vw, 0.88rem)" }} className="text-zinc-400 leading-tight text-right">
-              <p className="font-semibold text-zinc-500">Rapportera</p>
+            <div style={{ fontSize: "clamp(0.5rem, 0.7vw, 0.88rem)" }} className={`leading-tight text-right ${dim}`}>
+              <p className={`font-semibold ${strong}`}>Rapportera</p>
               <p>Skanna &amp; välj ditt lag</p>
             </div>
-            <div className="bg-white rounded-lg p-[3px]" style={{ width: "clamp(56px, 6.5vw, 88px)", height: "clamp(56px, 6.5vw, 88px)" }}>
+            <div className={`rounded-lg p-[3px] ${darkMode ? "bg-zinc-100" : "bg-white"}`} style={{ width: "clamp(56px, 6.5vw, 88px)", height: "clamp(56px, 6.5vw, 88px)" }}>
               <QRCode value={playUrl} style={{ width: "100%", height: "100%" }} />
             </div>
           </div>
@@ -769,19 +786,24 @@ function Header({
               style={{ backgroundColor: accent }}
             />
             <span
-              className="uppercase tracking-widest font-semibold text-zinc-700"
+              className={`uppercase tracking-widest font-semibold ${strong}`}
               style={{ fontSize: "clamp(0.55rem, 0.7vw, 0.85rem)" }}
             >
               Live · {timeLabel}
             </span>
           </div>
-          <div
-            className="text-zinc-500 tabular-nums"
-            style={{ fontSize: "clamp(0.55rem, 0.7vw, 0.85rem)" }}
-          >
+          <div className={`tabular-nums ${dim}`} style={{ fontSize: "clamp(0.55rem, 0.7vw, 0.85rem)" }}>
             {completed} / {total} matcher
           </div>
         </div>
+        <button
+          onClick={onToggleDark}
+          title="Växla mörkt/ljust läge (D)"
+          className={`rounded-full p-1.5 transition-colors ${darkMode ? "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800" : "text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100"}`}
+          style={{ fontSize: "clamp(0.8rem, 1vw, 1.1rem)" }}
+        >
+          {darkMode ? "☀︎" : "☾"}
+        </button>
       </div>
     </header>
   );
@@ -818,7 +840,7 @@ function MatchesView({
 }) {
   if (courts.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-zinc-500">
+      <div className="h-full flex items-center justify-center text-zinc-500 dark:text-zinc-400">
         <span style={{ fontSize: "clamp(1.5rem, 3vw, 3rem)" }}>
           Inga banor konfigurerade
         </span>
@@ -920,7 +942,7 @@ function CourtCard({
           )}
           {idle && (
             <span
-              className="inline-flex items-center rounded-full px-1.5 py-0.5 font-bold uppercase tracking-widest bg-zinc-200 text-zinc-500"
+              className="inline-flex items-center rounded-full px-1.5 py-0.5 font-bold uppercase tracking-widest bg-zinc-200 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400"
               style={{ fontSize: "clamp(0.45rem, 0.6vw, 0.75rem)" }}
             >
               Klar
@@ -1101,16 +1123,16 @@ function PodiumView({
               return (
                 <div
                   key={r.teamId}
-                  className="flex items-baseline gap-[1vw] border-b border-zinc-200 pb-[0.4vh]"
+                  className="flex items-baseline gap-[1vw] border-b border-zinc-200 dark:border-zinc-700 pb-[0.4vh]"
                 >
                   <span
-                    className="font-bold tabular-nums text-zinc-400 shrink-0 w-[3ch] text-right"
+                    className="font-bold tabular-nums text-zinc-400 dark:text-zinc-500 shrink-0 w-[3ch] text-right"
                     style={{ fontSize: "clamp(0.7rem, 1.1vw, 1.5rem)" }}
                   >
                     {r.place}.
                   </span>
                   <span
-                    className="font-medium text-zinc-800 truncate"
+                    className="font-medium text-zinc-800 dark:text-zinc-200 truncate"
                     style={{ fontSize: "clamp(0.7rem, 1.1vw, 1.5rem)" }}
                   >
                     {p1 ? shortName(p1) : "?"}{p2 ? ` & ${shortName(p2)}` : ""}
@@ -1190,7 +1212,7 @@ function PodiumPillar({
 
 function DoneState() {
   return (
-    <div className="w-full flex flex-col items-center justify-center text-zinc-400 gap-1.5">
+    <div className="w-full flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-600 gap-1.5">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/icons/icon-trophy.svg"
@@ -1218,7 +1240,7 @@ function WaitingFor({
 }) {
   const names = blockingTeams.map((t) => shortTeamName(t, playerMap)).join(" & ");
   return (
-    <div className="relative border-t border-amber-200 px-[1vw] py-[0.5vh] flex items-center gap-2 bg-amber-50/60">
+    <div className="relative border-t border-amber-200 dark:border-amber-900 px-[1vw] py-[0.5vh] flex items-center gap-2 bg-amber-50/60 dark:bg-amber-950/40">
       <span
         className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-black uppercase tracking-widest shrink-0 bg-amber-100 text-amber-700"
         style={{ fontSize: "clamp(0.45rem, 0.6vw, 0.75rem)" }}
@@ -1250,7 +1272,7 @@ function NextUp({
   const t2 = teamMap.get(match.team2_id);
   if (!t1 || !t2) return null;
   return (
-    <div className="relative border-t border-zinc-200 px-[1vw] py-[0.5vh] flex items-center gap-2">
+    <div className="relative border-t border-zinc-200 dark:border-zinc-700 px-[1vw] py-[0.5vh] flex items-center gap-2">
       <span
         className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-black uppercase tracking-widest shrink-0"
         style={{
@@ -1263,11 +1285,11 @@ function NextUp({
         <span aria-hidden="true">→</span>
       </span>
       <span
-        className="truncate font-semibold text-zinc-700"
+        className="truncate font-semibold text-zinc-700 dark:text-zinc-300"
         style={{ fontSize: "clamp(0.6rem, 0.8vw, 0.95rem)" }}
       >
         {shortTeamName(t1, playerMap)}{" "}
-        <span className="text-zinc-400 font-normal">vs</span>{" "}
+        <span className="text-zinc-400 dark:text-zinc-500 font-normal">vs</span>{" "}
         {shortTeamName(t2, playerMap)}
       </span>
     </div>
@@ -1299,11 +1321,11 @@ function StandingsColumn({
 
   return (
     <div
-      className="h-full rounded-2xl overflow-hidden flex flex-col border border-zinc-200 bg-white"
+      className="h-full rounded-2xl overflow-hidden flex flex-col border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
       style={{ boxShadow: "0 4px 18px -10px rgba(0,0,0,0.18)" }}
     >
       <div
-        className="px-[0.8vw] py-[0.6vh] flex items-center justify-between border-b border-zinc-200 shrink-0"
+        className="px-[0.8vw] py-[0.6vh] flex items-center justify-between border-b border-zinc-200 dark:border-zinc-700 shrink-0"
         style={{ backgroundColor: `${accent}15` }}
       >
         <div
@@ -1317,13 +1339,13 @@ function StandingsColumn({
           Tabell
         </div>
         <div
-          className="text-zinc-500 uppercase tracking-widest font-semibold tabular-nums"
+          className="text-zinc-500 dark:text-zinc-400 uppercase tracking-widest font-semibold tabular-nums"
           style={{ fontSize: "clamp(0.45rem, 0.55vw, 0.7rem)" }}
         >
           # · LAG · GD
         </div>
       </div>
-      <div className="flex-1 min-h-0 flex flex-col divide-y divide-zinc-200 overflow-y-auto">
+      <div className="flex-1 min-h-0 flex flex-col divide-y divide-zinc-200 dark:divide-zinc-700 overflow-y-auto">
         {groups.map((g, gi) => {
           const groupTeams = teams.filter((t) => t.group_id === g.id);
           const groupMatches = matches.filter((m) => m.group_id === g.id);
@@ -1350,7 +1372,7 @@ function StandingsColumn({
                   return (
                     <li
                       key={s.team_id}
-                      className="px-[0.8vw] flex items-center gap-[0.4vw] border-t border-zinc-100"
+                      className="px-[0.8vw] flex items-center gap-[0.4vw] border-t border-zinc-100 dark:border-zinc-800"
                       style={{
                         fontSize: `clamp(0.5rem, ${0.7 * scale}vw, ${0.86 * scale}rem)`,
                         padding: `${0.18 * scale}vh 0.8vw`,
@@ -1366,7 +1388,7 @@ function StandingsColumn({
                       >
                         {i + 1}
                       </span>
-                      <span className="flex-1 min-w-0 font-semibold truncate text-zinc-800">
+                      <span className="flex-1 min-w-0 font-semibold truncate text-zinc-800 dark:text-zinc-200">
                         {(() => {
                           const team = teamById.get(s.team_id);
                           return team
@@ -1392,7 +1414,7 @@ function StandingsColumn({
                 })}
                 {standings.length === 0 && (
                   <li
-                    className="px-[0.8vw] py-[0.5vh] flex items-center justify-center text-zinc-400"
+                    className="px-[0.8vw] py-[0.5vh] flex items-center justify-center text-zinc-400 dark:text-zinc-600"
                     style={{ fontSize: `clamp(0.5rem, ${0.7 * scale}vw, 0.88rem)` }}
                   >
                     Inga lag
@@ -1421,13 +1443,13 @@ function Footer({
   tournamentDone: boolean;
 }) {
   return (
-    <footer className="px-[2vw] py-[0.7vh] border-t border-zinc-200 flex items-center justify-between gap-3">
+    <footer className="px-[2vw] py-[0.7vh] border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between gap-3">
       <div
-        className="text-zinc-500 uppercase tracking-widest font-semibold flex items-center gap-2 min-w-0"
+        className="text-zinc-500 dark:text-zinc-400 uppercase tracking-widest font-semibold flex items-center gap-2 min-w-0"
         style={{ fontSize: "clamp(0.5rem, 0.7vw, 0.85rem)" }}
       >
-        <span className="text-zinc-700">{tenant.name}</span>
-        <span className="text-zinc-300">·</span>
+        <span className="text-zinc-700 dark:text-zinc-300">{tenant.name}</span>
+        <span className="text-zinc-300 dark:text-zinc-600">·</span>
         <span>
           {tournamentDone || tournament.status === "completed"
             ? "Avslutad"
@@ -1435,11 +1457,11 @@ function Footer({
               ? "Slutspel"
               : "Pågående"}
         </span>
-        <span className="text-zinc-300">·</span>
+        <span className="text-zinc-300 dark:text-zinc-600">·</span>
         <span className="tabular-nums">Uppdaterad {timeLabel}</span>
       </div>
       <div
-        className="text-zinc-400 uppercase tracking-widest font-semibold"
+        className="text-zinc-400 dark:text-zinc-500 uppercase tracking-widest font-semibold"
         style={{ fontSize: "clamp(0.5rem, 0.7vw, 0.85rem)" }}
       >
         smashboard
@@ -1472,7 +1494,7 @@ function FullscreenButton({ accent }: { accent: string }) {
       onClick={toggle}
       aria-label={isFs ? "Avsluta helskärm" : "Helskärm"}
       title={isFs ? "Avsluta helskärm" : "Helskärm"}
-      className="fixed top-3 right-3 z-50 inline-flex items-center justify-center rounded-full bg-white/90 backdrop-blur shadow-md border border-zinc-200 hover:bg-white transition-colors"
+      className="fixed top-3 right-3 z-50 inline-flex items-center justify-center rounded-full bg-white/90 dark:bg-zinc-800/90 backdrop-blur shadow-md border border-zinc-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-700 transition-colors"
       style={{
         width: "clamp(2rem, 2.4vw, 2.8rem)",
         height: "clamp(2rem, 2.4vw, 2.8rem)",

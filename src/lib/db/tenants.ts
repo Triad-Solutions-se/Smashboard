@@ -15,7 +15,7 @@ export async function getTenantBySlug(slug: string): Promise<Tenant | null> {
 
 export async function updateTenant(
   id: string,
-  patch: Partial<Pick<Tenant, "name" | "primary_color" | "logo_url">>
+  patch: Partial<Pick<Tenant, "name" | "primary_color" | "logo_url" | "logo_url_dark">>
 ): Promise<Tenant> {
   const { data, error } = await supabaseClient
     .from("tenants")

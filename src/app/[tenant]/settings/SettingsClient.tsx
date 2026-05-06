@@ -20,6 +20,7 @@ export function SettingsClient({
   const [name, setName] = useState(tenant.name);
   const [color, setColor] = useState(tenant.primary_color || "#10b981");
   const [logo, setLogo] = useState(tenant.logo_url || "");
+  const [logoDark, setLogoDark] = useState(tenant.logo_url_dark || "");
   const [savedTenant, setSavedTenant] = useState(false);
   const [savingTenant, setSavingTenant] = useState(false);
 
@@ -39,6 +40,7 @@ export function SettingsClient({
         name: name.trim(),
         primary_color: color,
         logo_url: logo.trim() || null,
+        logo_url_dark: logoDark.trim() || null,
       });
       setSavedTenant(true);
       setTimeout(() => setSavedTenant(false), 2000);
@@ -149,11 +151,19 @@ export function SettingsClient({
                 className="w-full px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
               />
             </Field>
-            <Field label="Logo URL">
+            <Field label="Logo URL (ljust läge)">
               <input
                 value={logo}
                 onChange={(e) => setLogo(e.target.value)}
                 placeholder="https://..."
+                className="w-full px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
+              />
+            </Field>
+            <Field label="Logo URL (mörkt läge)">
+              <input
+                value={logoDark}
+                onChange={(e) => setLogoDark(e.target.value)}
+                placeholder="https://... (vit/ljus version)"
                 className="w-full px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
               />
             </Field>
