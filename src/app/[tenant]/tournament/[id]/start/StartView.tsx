@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
@@ -168,6 +168,9 @@ export function StartView({
   const [selectedCourts, setSelectedCourts] = useState<Set<string>>(
     new Set<string>()
   );
+  const [qfCourtIds, setQfCourtIds] = useState<Set<string>>(new Set());
+  const [sfCourtIds, setSfCourtIds] = useState<Set<string>>(new Set());
+  const [finalCourtIds, setFinalCourtIds] = useState<Set<string>>(new Set());
   // Per-court group index (which group plays on this court). Default: round-robin
   // across the initial numGroups so each group gets at least one court out of the
   // box. Stays in sync as numGroups changes via the clamp effect below.
@@ -392,6 +395,9 @@ export function StartView({
         formation: "random",
         advances_per_group: advancesPerGroup > 0 ? advancesPerGroup : null,
         has_bronze: hasBronze,
+        qf_court_ids: [...qfCourtIds],
+        sf_court_ids: [...sfCourtIds],
+        final_court_ids: [...finalCourtIds],
       });
 
       router.push(`/${tenant.slug}/tournament/${tournament.id}/host`);
@@ -543,11 +549,14 @@ export function StartView({
             />
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
               {fullTeamCount} fulla lag tillgängliga
+              {numGroups >= 1 && fullTeamCount >= numGroups && (
+                <> · <span className="font-medium">{Math.floor(fullTeamCount / numGroups)} lag per grupp</span></>
+              )}
             </p>
           </div>
           <div>
             <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
-              Spel per match
+              Games per match, tiebreak vid {gamesPerMatch - 1}-{gamesPerMatch - 1}
             </label>
             <input
               type="number"
@@ -616,6 +625,50 @@ export function StartView({
               >
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${hasBronze ? "translate-x-4" : "translate-x-0.5"}`} />
               </button>
+            </div>
+          )}
+
+          {advancesPerGroup > 0 && courts.length > 0 && (
+            <div className="pt-2 border-t border-zinc-100 space-y-3">
+              <p className="text-xs font-medium text-zinc-500">Banor för slutspel</p>
+              {(() => {
+                const totalAdvancing = advancesPerGroup * numGroups;
+                const stages: { key: "qf" | "sf" | "final"; label: string; state: Set<string>; setter: React.Dispatch<React.SetStateAction<Set<string>>> }[] = [];
+                if (totalAdvancing > 4) stages.push({ key: "qf", label: "Kvartsfinal", state: qfCourtIds, setter: setQfCourtIds });
+                if (totalAdvancing > 2) stages.push({ key: "sf", label: "Semifinal", state: sfCourtIds, setter: setSfCourtIds });
+                stages.push({ key: "final", label: "Final", state: finalCourtIds, setter: setFinalCourtIds });
+                return stages.map(({ key, label, state, setter }) => (
+                  <div key={key}>
+                    <p className="text-xs text-zinc-600 font-medium mb-1">{label}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {courts.map((c) => {
+                        const on = state.has(c.id);
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setter((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(c.id)) next.delete(c.id);
+                                else next.add(c.id);
+                                return next;
+                              });
+                            }}
+                            className="px-2.5 py-1 rounded-full border text-xs font-medium transition"
+                            style={on
+                              ? { backgroundColor: accent, borderColor: accent, color: "#fff" }
+                              : { borderColor: "#d4d4d8", color: "#52525b" }
+                            }
+                          >
+                            {c.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
           )}
         </section>

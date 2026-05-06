@@ -252,6 +252,9 @@ export type ActivateTournamentInput = {
   formation: GroupFormation;
   advances_per_group?: number | null;
   has_bronze?: boolean;
+  qf_court_ids?: string[];
+  sf_court_ids?: string[];
+  final_court_ids?: string[];
 };
 
 export async function activateTournament(

@@ -46,6 +46,9 @@ export type Tournament = {
   max_teams: number | null;
   advances_per_group: number | null;
   has_bronze: boolean;
+  qf_court_ids: string[];
+  sf_court_ids: string[];
+  final_court_ids: string[];
   created_at: string;
 };
 
