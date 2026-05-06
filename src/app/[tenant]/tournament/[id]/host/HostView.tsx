@@ -155,8 +155,18 @@ export function HostView({
         () => load()
       )
       .subscribe();
+
+    // Reload on tab-visible so the host view recovers after the laptop sleeps.
+    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", onVisible);
+
+    // Periodic fallback in case realtime drops without a visibility event.
+    const timer = setInterval(() => { void load(); }, 15_000);
+
     return () => {
       supabaseClient.removeChannel(channel);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(timer);
     };
   }, [tournamentId, load]);
 

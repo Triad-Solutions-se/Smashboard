@@ -158,8 +158,14 @@ export function DisplayView({
         () => load()
       )
       .subscribe();
+
+    // Reload on tab-visible so TV/laptop waking from sleep catches up instantly.
+    const onVisible = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       supabaseClient.removeChannel(channel);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [tournamentId, load]);
 

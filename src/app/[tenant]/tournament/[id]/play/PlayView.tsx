@@ -88,7 +88,20 @@ export function PlayView({
       .on("postgres_changes", { event: "*", schema: "public", table: "tournament_matches", filter: `tournament_id=eq.${initialTournament.id}` }, () => { void load(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${initialTournament.id}` }, () => { void load(); })
       .subscribe();
-    return () => { void supabaseClient.removeChannel(channel); };
+
+    // On mobile, WebSocket drops when browser backgrounds or screen locks.
+    // Reload whenever the tab becomes visible again so the lock state is always fresh.
+    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", onVisible);
+
+    // Periodic fallback for stubborn network conditions (every 15 s).
+    const timer = setInterval(() => { void load(); }, 15_000);
+
+    return () => {
+      void supabaseClient.removeChannel(channel);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(timer);
+    };
   }, [initialTournament.id, load]);
 
   if (loadErr) {
