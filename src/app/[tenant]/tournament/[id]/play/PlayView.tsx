@@ -542,14 +542,13 @@ function ScoreForm({
 
   const myScore = myVal === "" ? null : parseInt(myVal, 10);
   const oppScore = oppVal === "" ? null : parseInt(oppVal, 10);
+  const bothFilled = myScore !== null && oppScore !== null && !isNaN(myScore) && !isNaN(oppScore);
   const valid =
-    myScore !== null &&
-    oppScore !== null &&
-    !isNaN(myScore) &&
-    !isNaN(oppScore) &&
-    myScore >= 0 &&
-    oppScore >= 0 &&
-    myScore + oppScore === gamesPerMatch;
+    bothFilled &&
+    myScore! >= 0 &&
+    oppScore! >= 0 &&
+    Math.max(myScore!, oppScore!) === gamesPerMatch &&
+    Math.min(myScore!, oppScore!) < gamesPerMatch;
 
   async function submit() {
     if (!valid || myScore === null || oppScore === null) return;
@@ -577,7 +576,7 @@ function ScoreForm({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-zinc-500">Ange matchresultatet ({gamesPerMatch} gem totalt)</p>
+      <p className="text-xs text-zinc-500">Ange matchresultatet (vinnaren spelar {gamesPerMatch} gem)</p>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         {/* My score */}
@@ -615,9 +614,9 @@ function ScoreForm({
         </div>
       </div>
 
-      {myScore !== null && oppScore !== null && !isNaN(myScore) && !isNaN(oppScore) && myScore + oppScore !== gamesPerMatch && (
+      {bothFilled && !valid && (
         <p className="text-xs text-amber-600">
-          Summan måste vara {gamesPerMatch} gem.
+          Vinnaren måste ha {gamesPerMatch} gem.
         </p>
       )}
 
