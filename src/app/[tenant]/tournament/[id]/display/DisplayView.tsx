@@ -681,13 +681,46 @@ function Header({
   }, [tenant.slug, tournament.id]);
 
   return (
-    <header className="px-[2vw] pt-[1.2vh] pb-[1vh] flex items-center justify-between gap-6 border-b border-zinc-200">
-      <div className="flex items-center gap-3 min-w-0">
+    <header className="px-[2vw] pt-[1.2vh] pb-[1vh] grid grid-cols-3 items-center gap-4 border-b border-zinc-200">
+      {/* Left: tournament info */}
+      <div className="min-w-0">
+        <div
+          className="font-black tracking-tight leading-none truncate text-zinc-900"
+          style={{ fontSize: "clamp(1.2rem, 2.2vw, 2.5rem)" }}
+        >
+          {tournament.name}
+        </div>
+        <div
+          className="mt-1 flex items-center gap-2 truncate"
+          style={{ fontSize: "clamp(0.7rem, 0.9vw, 1rem)" }}
+        >
+          <span className="font-semibold text-zinc-700">{tenant.name}</span>
+          <span
+            className="inline-block w-px bg-zinc-300"
+            style={{ height: "0.9em" }}
+            aria-hidden="true"
+          />
+          <span className="text-zinc-600">
+            {FORMAT_LABEL[tournament.format]}
+          </span>
+          <span
+            className="inline-block w-px bg-zinc-300"
+            style={{ height: "0.9em" }}
+            aria-hidden="true"
+          />
+          <span className="text-zinc-500 tabular-nums">
+            Mål {tournament.games_per_match} game
+          </span>
+        </div>
+      </div>
+
+      {/* Center: brand logo × Triad Solutions logo */}
+      <div className="flex items-center justify-center gap-[1.2vw]">
         {tenant.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={tenant.logo_url}
-            alt=""
+            alt={tenant.name}
             className="h-[4.5vh] w-auto object-contain"
           />
         ) : (
@@ -702,39 +735,22 @@ function Header({
             {tenant.name.charAt(0)}
           </div>
         )}
-        <div className="min-w-0">
-          <div
-            className="font-black tracking-tight leading-none truncate text-zinc-900"
-            style={{ fontSize: "clamp(1.2rem, 2.2vw, 2.5rem)" }}
-          >
-            {tournament.name}
-          </div>
-          <div
-            className="mt-1 flex items-center gap-2 truncate"
-            style={{ fontSize: "clamp(0.7rem, 0.9vw, 1rem)" }}
-          >
-            <span className="font-semibold text-zinc-700">{tenant.name}</span>
-            <span
-              className="inline-block w-px bg-zinc-300"
-              style={{ height: "0.9em" }}
-              aria-hidden="true"
-            />
-            <span className="text-zinc-600">
-              {FORMAT_LABEL[tournament.format]}
-            </span>
-            <span
-              className="inline-block w-px bg-zinc-300"
-              style={{ height: "0.9em" }}
-              aria-hidden="true"
-            />
-            <span className="text-zinc-500 tabular-nums">
-              Mål {tournament.games_per_match} game
-            </span>
-          </div>
-        </div>
+        <span
+          className="font-black text-zinc-300 leading-none select-none"
+          style={{ fontSize: "clamp(1.2rem, 2vw, 2.2rem)" }}
+        >
+          ×
+        </span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/icons/triad-logo.png"
+          alt="Triad Solutions"
+          className="h-[4.5vh] w-auto object-contain"
+        />
       </div>
 
-      <div className="flex items-center gap-[1.5vw] shrink-0">
+      {/* Right: QR code + live indicator */}
+      <div className="flex items-center justify-end gap-[1.5vw] shrink-0">
         {playUrl && (
           <div className="flex items-center gap-[0.6vw]">
             <div style={{ fontSize: "clamp(0.5rem, 0.7vw, 0.88rem)" }} className="text-zinc-400 leading-tight text-right">
