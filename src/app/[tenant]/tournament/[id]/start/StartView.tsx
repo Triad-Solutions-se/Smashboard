@@ -402,37 +402,37 @@ export function StartView({
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <header className="border-b border-zinc-200 px-6 py-5">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      <header className="border-b border-zinc-200 dark:border-zinc-700 px-6 py-5">
         <Link
           href={`/${tenant.slug}/tournament/${tournament.id}/plan`}
-          className="text-xs text-zinc-500 hover:text-zinc-900"
+          className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           ← Tillbaka till plan
         </Link>
         <h1 className="text-2xl font-semibold mt-1">{tournament.name}</h1>
-        <p className="text-sm text-zinc-500">Starta session</p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">Starta session</p>
       </header>
 
       {err && (
-        <div className="mx-6 mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
+        <div className="mx-6 mt-4 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-4 py-2 text-sm text-red-700 dark:text-red-400">
           {err}
         </div>
       )}
 
       {!formatSupported && (
-        <div className="mx-6 mt-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800">
+        <div className="mx-6 mt-4 rounded-md bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 px-4 py-2 text-sm text-amber-800 dark:text-amber-300">
           Bara Gruppspel kan startas just nu. Ändra speltyp på planen.
         </div>
       )}
 
       <main className="p-6 max-w-3xl space-y-5">
         {soloTeams.length > 0 && (
-          <section className="rounded-xl border border-zinc-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-zinc-700 mb-1">
+          <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
               Para ihop solospelare
             </h2>
-            <p className="text-xs text-zinc-500 mb-3">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
               {soloTeams.length} spelare letar partner.
             </p>
             <div className="space-y-2">
@@ -447,12 +447,12 @@ export function StartView({
                 return (
                   <div
                     key={t.id}
-                    className="flex items-center gap-2 rounded-lg border border-zinc-200 p-2"
+                    className="flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 p-2"
                   >
                     <span className="flex-1 text-sm font-medium">
                       {p1?.name ?? "?"}
                     </span>
-                    <span className="text-xs text-zinc-400">+</span>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500">+</span>
                     <div className="flex-1">
                       <PlayerCombobox
                         value={currentPair}
@@ -474,7 +474,7 @@ export function StartView({
                     </div>
                     <button
                       onClick={() => dropSolo(t.id)}
-                      className="text-xs text-zinc-400 hover:text-red-500 px-2"
+                      className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-red-500 px-2"
                     >
                       Ta bort
                     </button>
@@ -485,15 +485,15 @@ export function StartView({
           </section>
         )}
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-700">Inställningar</h2>
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Inställningar</h2>
 
           {fullTeamCount >= 4 && (() => {
             const presets = getPresets(fullTeamCount);
             if (presets.length === 0) return null;
             return (
               <div>
-                <p className="text-xs font-medium text-zinc-500 mb-2">Rekommenderat upplägg</p>
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Rekommenderat upplägg</p>
                 <div className="flex flex-wrap gap-2">
                   {presets.map((p) => {
                     const total = p.groups * p.advances;
@@ -529,7 +529,7 @@ export function StartView({
           })()}
 
           <div>
-            <label className="text-xs font-medium block mb-1 text-zinc-500">
+            <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
               Antal grupper: {numGroups}
             </label>
             <input
@@ -541,12 +541,12 @@ export function StartView({
               className="w-full"
               disabled={fullTeamCount < 1}
             />
-            <p className="text-xs text-zinc-400 mt-1">
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
               {fullTeamCount} fulla lag tillgängliga
             </p>
           </div>
           <div>
-            <label className="text-xs font-medium block mb-1 text-zinc-500">
+            <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
               Spel per match
             </label>
             <input
@@ -559,15 +559,15 @@ export function StartView({
                   Math.max(1, parseInt(e.target.value || "1", 10))
                 )
               }
-              className="w-32 px-3 py-2 rounded-md border border-zinc-300 bg-white"
+              className="w-32 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
             />
           </div>
         </section>
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 space-y-4">
-          <h2 className="text-sm font-semibold text-zinc-700">Slutspel</h2>
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Slutspel</h2>
           <div>
-            <label className="text-xs font-medium block mb-1 text-zinc-500">
+            <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
               Lag som går vidare per grupp
             </label>
             <div className="flex items-center gap-3">
@@ -588,7 +588,7 @@ export function StartView({
               </span>
             </div>
             {advancesPerGroup > 0 && (
-              <p className="text-xs text-zinc-500 mt-1">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                 {advancesPerGroup * numGroups} lag totalt →{" "}
                 {advancesPerGroup * numGroups <= 2
                   ? "Final"
@@ -598,14 +598,14 @@ export function StartView({
               </p>
             )}
             {advancesPerGroup === 0 && (
-              <p className="text-xs text-zinc-400 mt-1">Inget slutspel</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Inget slutspel</p>
             )}
           </div>
           {advancesPerGroup > 0 && (
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-medium text-zinc-700">Bronsmatch</span>
-                <p className="text-xs text-zinc-400">Match om tredjeplats</p>
+                <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Bronsmatch</span>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500">Match om tredjeplats</p>
               </div>
               <button
                 type="button"
@@ -621,39 +621,39 @@ export function StartView({
         </section>
 
         {fullTeamCount >= 2 && estimate.totalMinutes > 0 && (
-          <section className="rounded-xl border border-zinc-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-zinc-700 mb-3">Tidsuppskattning</h2>
+          <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Tidsuppskattning</h2>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              <div className="text-zinc-500">Per match</div>
+              <div className="text-zinc-500 dark:text-zinc-400">Per match</div>
               <div className="font-medium tabular-nums">~{fmtTime(estimate.matchMinutes)}</div>
 
-              <div className="text-zinc-500">Gruppspel</div>
+              <div className="text-zinc-500 dark:text-zinc-400">Gruppspel</div>
               <div className="font-medium tabular-nums">~{fmtTime(estimate.groupMinutes)}</div>
 
               {estimate.playoffMinutes > 0 && (
                 <>
-                  <div className="text-zinc-500">Slutspel</div>
+                  <div className="text-zinc-500 dark:text-zinc-400">Slutspel</div>
                   <div className="font-medium tabular-nums">~{fmtTime(estimate.playoffMinutes)}</div>
                 </>
               )}
 
-              <div className="text-zinc-500 font-semibold pt-1 border-t border-zinc-100">Totalt</div>
-              <div className="font-semibold tabular-nums pt-1 border-t border-zinc-100" style={{ color: accent }}>
+              <div className="text-zinc-500 dark:text-zinc-400 font-semibold pt-1 border-t border-zinc-100 dark:border-zinc-800">Totalt</div>
+              <div className="font-semibold tabular-nums pt-1 border-t border-zinc-100 dark:border-zinc-800" style={{ color: accent }}>
                 ~{fmtTime(estimate.totalMinutes)}
               </div>
             </div>
             {selectedCourts.size === 0 && (
-              <p className="text-xs text-zinc-400 mt-2">
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-2">
                 Baserat på {activeCourtsForEstimate} rekommenderade {activeCourtsForEstimate === 1 ? "bana" : "banor"} — välj banor nedan för exaktare uppskattning.
               </p>
             )}
           </section>
         )}
 
-        <section className="rounded-xl border border-zinc-200 bg-white p-4">
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
           <div className="flex items-start justify-between mb-2 gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-700">Banor</h2>
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Banor</h2>
               {fullTeamCount >= 2 && (
                 <p className="text-xs mt-0.5"
                   style={{
@@ -671,7 +671,7 @@ export function StartView({
               )}
             </div>
             {numGroups > 1 && selectedCourts.size > 0 && (
-              <span className="text-xs text-zinc-500 tabular-nums shrink-0">
+              <span className="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums shrink-0">
                 {groupCourtCounts
                   .map((n, i) => `${String.fromCharCode(65 + i)}: ${n}`)
                   .join(" · ")}
@@ -679,11 +679,11 @@ export function StartView({
             )}
           </div>
           {courts.length === 0 ? (
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
               Inga banor finns. Lägg till banor i inställningarna först.
             </p>
           ) : (
-            <div className="divide-y divide-zinc-100">
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {courts.map((c) => {
                 const checked = selectedCourts.has(c.id);
                 const g = courtGroupIdx[c.id] ?? 0;
@@ -709,7 +709,7 @@ export function StartView({
                         }}
                         onClick={(e) => e.stopPropagation()}
                         disabled={!checked}
-                        className="px-2 py-1 rounded-md border border-zinc-300 bg-white text-xs disabled:bg-zinc-50 disabled:text-zinc-400"
+                        className="px-2 py-1 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100 text-xs disabled:bg-zinc-50 dark:disabled:bg-zinc-900 disabled:text-zinc-400 dark:disabled:text-zinc-500"
                       >
                         {Array.from({ length: numGroups }, (_, i) => (
                           <option key={i} value={i}>

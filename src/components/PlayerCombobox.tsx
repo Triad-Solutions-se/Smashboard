@@ -156,7 +156,7 @@ export const PlayerCombobox = forwardRef<PlayerComboboxHandle, Props>(
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKey}
-          className="w-full px-2 py-1.5 pr-7 rounded-md border border-zinc-300 bg-white text-sm disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+          className="w-full px-2 py-1.5 pr-7 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100 text-sm disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-zinc-400"
         />
         {allowClear && value && (
           <button
@@ -168,7 +168,7 @@ export const PlayerCombobox = forwardRef<PlayerComboboxHandle, Props>(
               setOpen(false);
               onClear?.();
             }}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-zinc-400 hover:text-zinc-700 text-base leading-none"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 text-base leading-none"
             aria-label="Rensa"
           >
             ×
@@ -177,7 +177,7 @@ export const PlayerCombobox = forwardRef<PlayerComboboxHandle, Props>(
         {open && filtered.length > 0 && (
           <ul
             role="listbox"
-            className="absolute z-20 left-0 right-0 mt-1 max-h-60 overflow-auto rounded-md border border-zinc-200 bg-white shadow-md"
+            className="absolute z-20 left-0 right-0 mt-1 max-h-60 overflow-auto rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-md"
           >
             {filtered.map((p, i) => (
               <li
@@ -190,7 +190,7 @@ export const PlayerCombobox = forwardRef<PlayerComboboxHandle, Props>(
                 }}
                 onMouseEnter={() => setActiveIdx(i)}
                 className={`px-2 py-1.5 text-sm cursor-pointer ${
-                  i === activeIdx ? "bg-zinc-100" : "bg-white"
+                  i === activeIdx ? "bg-zinc-100 dark:bg-zinc-800" : "bg-white dark:bg-zinc-900"
                 }`}
               >
                 {p.name}
@@ -199,7 +199,7 @@ export const PlayerCombobox = forwardRef<PlayerComboboxHandle, Props>(
           </ul>
         )}
         {open && query.trim() && filtered.length === 0 && (
-          <div className="absolute z-20 left-0 right-0 mt-1 rounded-md border border-zinc-200 bg-white shadow-md px-2 py-1.5 text-xs text-zinc-500">
+          <div className="absolute z-20 left-0 right-0 mt-1 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-md px-2 py-1.5 text-xs text-zinc-500 dark:text-zinc-400">
             {emptyHint}
           </div>
         )}

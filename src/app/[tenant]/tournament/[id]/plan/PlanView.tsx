@@ -341,17 +341,17 @@ export function PlanView({
   const showsTeams = format === "gruppspel" || format === "team_mexicano";
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <header className="border-b border-zinc-200 px-6 py-5 flex items-start justify-between gap-4 flex-wrap">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      <header className="border-b border-zinc-200 dark:border-zinc-700 px-6 py-5 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <Link
             href={`/${tenant.slug}`}
-            className="text-xs text-zinc-500 hover:text-zinc-900"
+            className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             ← Sessioner
           </Link>
           <h1 className="text-2xl font-semibold mt-1">Planera session</h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Utkast — sparas automatiskt. Du kan ändra fram till start.
           </p>
         </div>
@@ -371,11 +371,11 @@ export function PlanView({
       </header>
 
       {err && (
-        <div className="mx-6 mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700 flex items-center justify-between">
+        <div className="mx-6 mt-4 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 px-4 py-2 text-sm text-red-700 dark:text-red-400 flex items-center justify-between">
           <span>{err}</span>
           <button
             onClick={() => setErr(null)}
-            className="text-red-700 text-xs underline"
+            className="text-red-700 dark:text-red-400 text-xs underline"
           >
             stäng
           </button>
@@ -384,25 +384,25 @@ export function PlanView({
 
       <main className="p-6 grid lg:grid-cols-3 gap-6">
         <section className="lg:col-span-1 space-y-4">
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 space-y-4">
-            <h2 className="text-sm font-semibold text-zinc-700">Detaljer</h2>
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">
+            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Detaljer</h2>
             <div>
-              <label className="text-xs font-medium block mb-1 text-zinc-500">
+              <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
                 Namn
               </label>
               <input
-                className="w-full px-3 py-2 rounded-md border border-zinc-300 bg-white"
+                className="w-full px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={() => metaDirty() && saveMeta()}
               />
             </div>
             <div>
-              <label className="text-xs font-medium block mb-1 text-zinc-500">
+              <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
                 Speltyp
               </label>
               <select
-                className="w-full px-3 py-2 rounded-md border border-zinc-300 bg-white"
+                className="w-full px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
                 value={format}
                 onChange={(e) => {
                   setFormat(e.target.value as TournamentFormat);
@@ -417,18 +417,18 @@ export function PlanView({
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium block mb-1 text-zinc-500">
+              <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
                 Datum & tid
               </label>
               <input
                 type="datetime-local"
-                className="w-full px-3 py-2 rounded-md border border-zinc-300 bg-white"
+                className="w-full px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
                 value={scheduledLocal}
                 onChange={(e) => setScheduledLocal(e.target.value)}
                 onBlur={() => metaDirty() && saveMeta()}
               />
             </div>
-            <div className="text-xs text-zinc-400">
+            <div className="text-xs text-zinc-400 dark:text-zinc-500">
               {savingMeta
                 ? "Sparar…"
                 : savedAt
@@ -437,24 +437,24 @@ export function PlanView({
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-zinc-700 mb-2">
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
               Spelarbas
             </h2>
-            <p className="text-xs text-zinc-500 mb-3">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
               {assignedSet.size} av {players.length} spelare med
             </p>
             <Link
               href={`/${tenant.slug}/players`}
-              className="inline-block px-3 py-1.5 rounded-md text-xs font-medium border border-zinc-200 hover:bg-zinc-50"
+              className="inline-block px-3 py-1.5 rounded-md text-xs font-medium border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800"
             >
               Hantera spelare →
             </Link>
           </div>
 
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 space-y-3">
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-700">
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
                 Öppna anmälan
               </h2>
               <button
@@ -474,19 +474,19 @@ export function PlanView({
                 />
               </button>
             </div>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
               Ger spelare en länk att anmäla sig själva på{" "}
               <span className="font-mono">/play</span>.
             </p>
             <div>
-              <label className="text-xs font-medium block mb-1 text-zinc-500">
+              <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
                 Antal platser (lag)
               </label>
               <input
                 type="number"
                 min={1}
                 inputMode="numeric"
-                className="w-full px-3 py-2 rounded-md border border-zinc-300 bg-white"
+                className="w-full px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
                 value={maxTeamsInput}
                 onChange={(e) => setMaxTeamsInput(e.target.value)}
                 onBlur={commitMaxTeams}
@@ -494,7 +494,7 @@ export function PlanView({
               />
             </div>
             {openReg && (
-              <div className="text-xs text-zinc-500 break-all">
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 break-all">
                 <a
                   href={`/${tenant.slug}/play/${tournament.id}`}
                   className="underline"
@@ -507,8 +507,8 @@ export function PlanView({
           </div>
 
           {registrations.length > 0 && (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4">
-              <h2 className="text-sm font-semibold text-zinc-700 mb-3">
+            <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">
                 Anmälningar ({registrations.length})
               </h2>
               <ul className="space-y-2">
@@ -517,7 +517,7 @@ export function PlanView({
                   return (
                     <li
                       key={r.id}
-                      className="rounded-lg border border-zinc-200 p-2.5 text-sm"
+                      className="rounded-lg border border-zinc-200 dark:border-zinc-700 p-2.5 text-sm"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -525,7 +525,7 @@ export function PlanView({
                             {r.player1_name}
                             {r.player2_name ? ` & ${r.player2_name}` : ""}
                           </div>
-                          <div className="text-xs text-zinc-500 truncate">
+                          <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
                             {r.player1_phone || "—"}
                             {r.player2_name
                               ? ` · ${r.player2_phone || "—"}`
@@ -555,7 +555,7 @@ export function PlanView({
                             type="button"
                             onClick={() => dismissReg(r.id)}
                             disabled={busyRegId === r.id}
-                            className="px-2.5 py-1 rounded text-xs font-medium text-zinc-500 hover:text-red-500 disabled:opacity-50"
+                            className="px-2.5 py-1 rounded text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-red-500 disabled:opacity-50"
                           >
                             Ta bort
                           </button>
@@ -570,16 +570,16 @@ export function PlanView({
         </section>
 
         <section className="lg:col-span-2 space-y-4">
-          <div className="rounded-xl border border-zinc-200 bg-white">
-            <div className="flex items-center gap-0 border-b border-zinc-200 px-4 pt-3">
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
+            <div className="flex items-center gap-0 border-b border-zinc-200 dark:border-zinc-700 px-4 pt-3">
               {(["lag", "betalning"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setPlanTab(t)}
                   className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors capitalize ${
                     planTab === t
-                      ? "text-zinc-900"
-                      : "text-zinc-500 border-transparent hover:text-zinc-700"
+                      ? "text-zinc-900 dark:text-zinc-100"
+                      : "text-zinc-500 dark:text-zinc-400 border-transparent hover:text-zinc-700 dark:hover:text-zinc-300"
                   }`}
                   style={planTab === t ? { borderColor: accent } : undefined}
                 >
@@ -595,11 +595,11 @@ export function PlanView({
                 <>
                   <div className="mb-3">
                     {showsTeams && soloTeams.length > 0 && (
-                      <span className="inline-flex px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-medium border border-amber-200">
+                      <span className="inline-flex px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-xs font-medium border border-amber-200 dark:border-amber-800">
                         {soloTeams.length} letar partner
                       </span>
                     )}
-                    <p className="text-xs text-zinc-500 mt-1">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                       {showsTeams
                         ? "Skriv namnet på en spelare för att lägga till — para ihop dem nedan."
                         : "Skriv namnet på en spelare för att lägga till. Lag bildas vid varje runda."}
@@ -636,7 +636,7 @@ export function PlanView({
 
                   <div className="space-y-2 mt-3">
                     {teams.length === 0 && (
-                      <div className="text-center text-sm text-zinc-500 py-8 border border-dashed border-zinc-200 rounded-lg">
+                      <div className="text-center text-sm text-zinc-500 dark:text-zinc-400 py-8 border border-dashed border-zinc-200 dark:border-zinc-700 rounded-lg">
                         Inga {showsTeams ? "lag" : "spelare"} ännu.
                       </div>
                     )}
@@ -665,7 +665,7 @@ export function PlanView({
                   </div>
 
                   {showsTeams && soloTeams.length > 0 && (
-                    <div className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                    <div className="mt-4 rounded-md bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
                       {soloTeams.length} spelare letar partner. Du kan starta
                       ändå — para ihop dem i nästa steg.
                     </div>
@@ -682,18 +682,18 @@ export function PlanView({
           </div>
 
           {planTab === "lag" && unassignedPlayers.length > 0 && (
-            <div className="rounded-xl border border-zinc-200 bg-white p-4">
-              <h2 className="text-sm font-semibold text-zinc-700 mb-1">
+            <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
                 Ej tilldelade ({unassignedPlayers.length})
               </h2>
-              <p className="text-xs text-zinc-400 mb-2">Klicka för att lägga till</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-2">Klicka för att lägga till</p>
               <div className="flex flex-wrap gap-1.5">
                 {filteredUnassigned.map((p) => (
                   <button
                     key={p.id}
                     type="button"
                     onClick={() => addTeam(p.id, null)}
-                    className="px-2 py-1 rounded bg-zinc-100 text-xs hover:bg-zinc-200 transition-colors cursor-pointer"
+                    className="px-2 py-1 rounded bg-zinc-100 dark:bg-zinc-800 text-xs hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
                   >
                     + {p.name}
                   </button>
@@ -744,9 +744,9 @@ function TeamRow({
   const isSolo = !team.player2_id;
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-3">
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-zinc-500">
+        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
           {showSecondSlot ? `Lag ${idx + 1}` : `Spelare ${idx + 1}`}
           {showSecondSlot && isSolo && (
             <span className="ml-2 text-amber-600">· letar partner</span>
@@ -756,7 +756,7 @@ function TeamRow({
           type="button"
           onClick={onRemove}
           disabled={busy}
-          className="text-xs text-zinc-400 hover:text-red-500 disabled:opacity-50"
+          className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-red-500 disabled:opacity-50"
         >
           Ta bort
         </button>
@@ -834,7 +834,7 @@ function AddPlayerRow({
 
   if (options.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-zinc-200 px-3 py-2 text-xs text-zinc-500">
+      <div className="rounded-md border border-dashed border-zinc-200 dark:border-zinc-700 px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
         Alla aktiva spelare är tilldelade. Lägg till fler i Spelare.
       </div>
     );
@@ -843,10 +843,10 @@ function AddPlayerRow({
   if (!paired) {
     return (
       <div
-        className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-2"
+        className="flex items-center gap-2 rounded-md border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-2"
         style={{ borderLeftColor: accent, borderLeftWidth: 3 }}
       >
-        <span className="text-xs font-medium text-zinc-500 px-1 shrink-0">
+        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 px-1 shrink-0">
           + Lägg till spelare
         </span>
         <div className="flex-1">
@@ -868,10 +868,10 @@ function AddPlayerRow({
 
   return (
     <div
-      className="rounded-md border border-zinc-200 bg-zinc-50 p-2"
+      className="rounded-md border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-2"
       style={{ borderLeftColor: accent, borderLeftWidth: 3 }}
     >
-      <div className="text-xs font-medium text-zinc-500 px-1 mb-1.5">
+      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 px-1 mb-1.5">
         + Lägg till lag
       </div>
       <div className="grid grid-cols-2 gap-2">

@@ -113,7 +113,7 @@ export function PlayView({
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       <div className="max-w-md mx-auto px-4 py-6 space-y-5">
         <PageHeader
           tenant={tenant}
@@ -124,7 +124,7 @@ export function PlayView({
         />
 
         {!data ? (
-          <div className="py-16 text-center text-sm text-zinc-400 animate-pulse">Laddar…</div>
+          <div className="py-16 text-center text-sm text-zinc-400 dark:text-zinc-500 animate-pulse">Laddar…</div>
         ) : selectedTeamId ? (
           <Dashboard
             tournament={tournament}
@@ -161,10 +161,10 @@ function PageHeader({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-zinc-100 hover:bg-zinc-200 transition shrink-0"
+          className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition shrink-0"
           aria-label="Byt lag"
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-zinc-600" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-zinc-600 dark:text-zinc-400" aria-hidden="true">
             <path fillRule="evenodd" d="M9.78 4.22a.75.75 0 0 1 0 1.06L7.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L5.47 8.53a.75.75 0 0 1 0-1.06l3.25-3.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
           </svg>
         </button>
@@ -180,7 +180,7 @@ function PageHeader({
         </span>
       )}
       <div className="min-w-0">
-        <p className="text-xs text-zinc-500 truncate">{tenant.name}</p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{tenant.name}</p>
         <h1 className="text-lg font-semibold leading-tight truncate">{tournament.name}</h1>
       </div>
     </header>
@@ -215,8 +215,8 @@ function TeamPicker({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-semibold text-zinc-800">Välj ditt lag</h2>
-        <p className="text-sm text-zinc-500 mt-0.5">Tryck på laget du spelar i.</p>
+        <h2 className="font-semibold text-zinc-800 dark:text-zinc-200">Välj ditt lag</h2>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">Tryck på laget du spelar i.</p>
       </div>
 
       <input
@@ -224,12 +224,12 @@ function TeamPicker({
         placeholder="Sök spelare…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:border-transparent"
+        className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 dark:text-zinc-100 px-4 py-2.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:border-transparent"
         style={{ "--tw-ring-color": accent } as React.CSSProperties}
       />
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-zinc-400 text-center py-6">Inga lag hittades.</p>
+        <p className="text-sm text-zinc-400 dark:text-zinc-500 text-center py-6">Inga lag hittades.</p>
       ) : (
         <ul className="space-y-2">
           {filtered.map((team) => {
@@ -240,14 +240,14 @@ function TeamPicker({
                 <button
                   type="button"
                   onClick={() => onSelect(team.id)}
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3.5 text-left hover:border-zinc-300 active:scale-[0.99] transition-all"
+                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3.5 text-left hover:border-zinc-300 dark:hover:border-zinc-600 active:scale-[0.99] transition-all"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="font-medium text-zinc-900">{p1?.name ?? "?"}</p>
-                      {p2 && <p className="text-sm text-zinc-500 mt-0.5">{p2.name}</p>}
+                      <p className="font-medium text-zinc-900 dark:text-zinc-100">{p1?.name ?? "?"}</p>
+                      {p2 && <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">{p2.name}</p>}
                     </div>
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-zinc-300 shrink-0" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-zinc-300 dark:text-zinc-600 shrink-0" aria-hidden="true">
                       <path fillRule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06L7.28 11.78a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
                     </svg>
                   </div>
@@ -391,10 +391,10 @@ function Dashboard({
       {groupStandings.length > 0 && (
         <section>
           <SectionLabel>{myGroup?.name ?? "Grupp"} – ställning</SectionLabel>
-          <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-zinc-400 border-b border-zinc-100">
+                <tr className="text-xs text-zinc-400 dark:text-zinc-500 border-b border-zinc-100 dark:border-zinc-800">
                   <th className="pl-3 pr-1 py-2 text-left font-medium w-5">#</th>
                   <th className="px-1 py-2 text-left font-medium">Lag</th>
                   <th className="px-1 py-2 text-right font-medium">M</th>
@@ -403,7 +403,7 @@ function Dashboard({
                   <th className="pr-3 pl-1 py-2 text-right font-medium">+/−</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-50">
+              <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800">
                 {groupStandings.map((row, i) => {
                   const isMe = row.team_id === selectedTeamId;
                   const team = teamMap.get(row.team_id);
@@ -414,14 +414,14 @@ function Dashboard({
                       className={isMe ? "font-semibold" : ""}
                       style={isMe ? { backgroundColor: `${accent}10` } : undefined}
                     >
-                      <td className="pl-3 pr-1 py-2 text-zinc-400 text-xs">{i + 1}</td>
+                      <td className="pl-3 pr-1 py-2 text-zinc-400 dark:text-zinc-500 text-xs">{i + 1}</td>
                       <td className="px-1 py-2 min-w-0">
                         <span className="block truncate" style={isMe ? { color: accent } : undefined}>{name}</span>
                       </td>
-                      <td className="px-1 py-2 text-right tabular-nums text-zinc-600">{row.mp}</td>
-                      <td className="px-1 py-2 text-right tabular-nums text-zinc-600">{row.gf}</td>
-                      <td className="px-1 py-2 text-right tabular-nums text-zinc-600">{row.ga}</td>
-                      <td className="pr-3 pl-1 py-2 text-right tabular-nums text-zinc-600"
+                      <td className="px-1 py-2 text-right tabular-nums text-zinc-600 dark:text-zinc-400">{row.mp}</td>
+                      <td className="px-1 py-2 text-right tabular-nums text-zinc-600 dark:text-zinc-400">{row.gf}</td>
+                      <td className="px-1 py-2 text-right tabular-nums text-zinc-600 dark:text-zinc-400">{row.ga}</td>
+                      <td className="pr-3 pl-1 py-2 text-right tabular-nums text-zinc-600 dark:text-zinc-400"
                           style={row.gd > 0 ? { color: accent } : row.gd < 0 ? { color: "#ef4444" } : undefined}>
                         {row.gd > 0 ? `+${row.gd}` : row.gd}
                       </td>
@@ -470,7 +470,7 @@ function MatchCard({
   const oppScore = iAmTeam1 ? match.score_team2 : match.score_team1;
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
+    <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden">
       {/* Court — prominent banner */}
       <div
         className="px-4 py-3 flex items-center justify-between gap-2"
@@ -487,11 +487,11 @@ function MatchCard({
             Rapporterat
           </span>
         ) : isLocked ? (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-600 border border-amber-200 dark:border-amber-800">
             Väntar
           </span>
         ) : (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-600 border border-amber-200 dark:border-amber-800">
             Pågår
           </span>
         )}
@@ -501,21 +501,21 @@ function MatchCard({
       <div className="px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-zinc-400 mb-0.5">Ni</p>
-            <p className="font-semibold text-zinc-900 truncate" style={{ color: accent }}>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-0.5">Ni</p>
+            <p className="font-semibold text-zinc-900 dark:text-zinc-100 truncate" style={{ color: accent }}>
               {shortTeamName(teamMap.get(myTeamId)!, playerMap)}
             </p>
           </div>
           {reported ? (
             <div className="text-2xl font-black tabular-nums shrink-0" style={{ color: accent }}>
-              {myScore ?? "–"}<span className="text-zinc-300 mx-1">–</span>{oppScore ?? "–"}
+              {myScore ?? "–"}<span className="text-zinc-300 dark:text-zinc-600 mx-1">–</span>{oppScore ?? "–"}
             </div>
           ) : (
-            <div className="text-lg font-bold text-zinc-300 shrink-0">vs</div>
+            <div className="text-lg font-bold text-zinc-300 dark:text-zinc-600 shrink-0">vs</div>
           )}
           <div className="flex-1 min-w-0 text-right">
-            <p className="text-xs text-zinc-400 mb-0.5">Motståndare</p>
-            <p className="font-semibold text-zinc-700 truncate">
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-0.5">Motståndare</p>
+            <p className="font-semibold text-zinc-700 dark:text-zinc-300 truncate">
               {opponent ? shortTeamName(opponent, playerMap) : "?"}
             </p>
           </div>
@@ -524,13 +524,13 @@ function MatchCard({
 
       {/* Locked — waiting for another match to finish */}
       {!reported && isLocked && (
-        <div className="border-t border-amber-100 bg-amber-50 px-4 py-4 flex items-start gap-3">
+        <div className="border-t border-amber-100 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-4 py-4 flex items-start gap-3">
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" aria-hidden="true">
             <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-13a.75.75 0 0 0-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 0 0 0-1.5h-3.25V5Z" clipRule="evenodd" />
           </svg>
           <div>
-            <p className="text-sm font-semibold text-amber-800">Väntar på pågående match</p>
-            <p className="text-xs text-amber-700 mt-0.5">
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Väntar på pågående match</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
               {blockingTeams.map((t) => shortTeamName(t, playerMap)).join(" & ")} spelar fortfarande sin föregående match.
             </p>
           </div>
@@ -539,7 +539,7 @@ function MatchCard({
 
       {/* Score form — only when not reported and not locked */}
       {!reported && !isLocked && (
-        <div className="border-t border-zinc-100 px-4 py-4">
+        <div className="border-t border-zinc-100 dark:border-zinc-800 px-4 py-4">
           <ScoreForm
             match={match}
             myTeamId={myTeamId}
@@ -611,12 +611,12 @@ function ScoreForm({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-zinc-500">Ange matchresultatet (vinnaren spelar {gamesPerMatch} gem)</p>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">Ange matchresultatet (vinnaren spelar {gamesPerMatch} gem)</p>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         {/* My score */}
         <div className="space-y-1">
-          <label className="text-xs text-zinc-400">Ni</label>
+          <label className="text-xs text-zinc-400 dark:text-zinc-500">Ni</label>
           <input
             type="number"
             min="0"
@@ -625,16 +625,16 @@ function ScoreForm({
             value={myVal}
             onChange={(e) => setMyVal(e.target.value)}
             placeholder="0"
-            className="w-full text-center text-2xl font-bold rounded-lg border border-zinc-200 py-3 focus:outline-none focus:ring-2 focus:border-transparent"
+            className="w-full text-center text-2xl font-bold rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 dark:text-zinc-100 py-3 focus:outline-none focus:ring-2 focus:border-transparent"
             style={{ "--tw-ring-color": accent } as React.CSSProperties}
           />
         </div>
 
-        <span className="text-zinc-300 font-bold text-lg mt-5">–</span>
+        <span className="text-zinc-300 dark:text-zinc-600 font-bold text-lg mt-5">–</span>
 
         {/* Opponent score */}
         <div className="space-y-1">
-          <label className="text-xs text-zinc-400 truncate block text-right">{opponentName}</label>
+          <label className="text-xs text-zinc-400 dark:text-zinc-500 truncate block text-right">{opponentName}</label>
           <input
             type="number"
             min="0"
@@ -643,7 +643,7 @@ function ScoreForm({
             value={oppVal}
             onChange={(e) => setOppVal(e.target.value)}
             placeholder="0"
-            className="w-full text-center text-2xl font-bold rounded-lg border border-zinc-200 py-3 focus:outline-none focus:ring-2 focus:border-transparent"
+            className="w-full text-center text-2xl font-bold rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 dark:text-zinc-100 py-3 focus:outline-none focus:ring-2 focus:border-transparent"
             style={{ "--tw-ring-color": accent } as React.CSSProperties}
           />
         </div>
@@ -692,7 +692,7 @@ function UpcomingMatchRow({
   const court = match.court_id ? courtMap.get(match.court_id) : null;
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 flex items-center gap-3">
+    <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 flex items-center gap-3">
       <div
         className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
         style={{ backgroundColor: `${accent}18`, color: accent }}
@@ -700,10 +700,10 @@ function UpcomingMatchRow({
         {match.round_number}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-zinc-800 truncate">
+        <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">
           mot {opponent ? shortTeamName(opponent, playerMap) : "?"}
         </p>
-        {court && <p className="text-xs text-zinc-400 mt-0.5">{court.name}</p>}
+        {court && <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">{court.name}</p>}
       </div>
     </div>
   );
@@ -713,13 +713,13 @@ function UpcomingMatchRow({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">{children}</h2>
+    <h2 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wide mb-2">{children}</h2>
   );
 }
 
 function EmptyCard({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-zinc-200 bg-white px-4 py-6 text-sm text-zinc-400 text-center">
+    <div className="rounded-xl border border-dashed border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-6 text-sm text-zinc-400 dark:text-zinc-500 text-center">
       {children}
     </div>
   );
