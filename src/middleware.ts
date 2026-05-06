@@ -46,6 +46,9 @@ function isPublicTenantPath(pathname: string): boolean {
   // /play and /{tenant}/play — the latter occurs when links include the tenant
   // slug on subdomains (browser sends /bonpadel/play/... to the middleware).
   if (pathname.startsWith("/play") || /^\/[^/]+\/play(\/|$)/.test(pathname)) return true;
+  // /tournament/[id]/play — the QR-code "score your match" page (no login required).
+  // Matches both /tournament/<id>/play and /<slug>/tournament/<id>/play.
+  if (/\/tournament\/[^/]+\/play(\/|$)/.test(pathname)) return true;
   // /[tenant]/tournament/[id]/display is public — but in middleware we
   // operate on the un-rewritten path (already relative to tenant root)
   if (/^\/tournament\/[^/]+\/display\/?$/.test(pathname)) return true;

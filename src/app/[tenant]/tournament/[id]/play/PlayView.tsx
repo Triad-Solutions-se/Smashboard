@@ -31,9 +31,14 @@ export function PlayView({
   tenant: Tenant;
   tournament: Tournament;
 }) {
+  const storageKey = `smashboard:team:${initialTournament.id}`;
+
   const [data, setData] = useState<Loaded | null>(null);
   const [tournament, setTournament] = useState(initialTournament);
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(storageKey);
+  });
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
   const accent = tenant.primary_color || "#10b981";
@@ -67,6 +72,16 @@ export function PlayView({
     load().catch((e) => setLoadErr((e as Error).message));
   }, [load]);
 
+  // Clear stale team selection if the stored team no longer exists in this tournament
+  useEffect(() => {
+    if (!data || !selectedTeamId) return;
+    const exists = data.teams.some((t) => t.id === selectedTeamId);
+    if (!exists) {
+      localStorage.removeItem(storageKey);
+      setSelectedTeamId(null);
+    }
+  }, [data, selectedTeamId, storageKey]);
+
   useEffect(() => {
     const channel = supabaseClient
       .channel(`play:${initialTournament.id}`)
@@ -92,7 +107,7 @@ export function PlayView({
           tournament={tournament}
           accent={accent}
           showBack={!!selectedTeamId}
-          onBack={() => setSelectedTeamId(null)}
+          onBack={() => { localStorage.removeItem(storageKey); setSelectedTeamId(null); }}
         />
 
         {!data ? (
@@ -105,7 +120,7 @@ export function PlayView({
             accent={accent}
           />
         ) : (
-          <TeamPicker data={data} accent={accent} onSelect={setSelectedTeamId} />
+          <TeamPicker data={data} accent={accent} onSelect={(id) => { localStorage.setItem(storageKey, id); setSelectedTeamId(id); }} />
         )}
       </div>
     </div>
