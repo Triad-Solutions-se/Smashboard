@@ -731,18 +731,19 @@ function Header({
       </div>
 
       {/* Center: brand logo × Triad Solutions logo — fills full banner height */}
-      <div className="flex items-stretch justify-center gap-[1.5vw] py-[0.6vh]">
+      <div className="flex items-center justify-center gap-[1.5vw]" style={{ height: "9vh" }}>
         {tenantLogoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={tenantLogoSrc}
             alt={tenant.name}
-            className="h-full w-auto object-contain"
+            style={{ height: "7.8vh", width: "auto", objectFit: "contain" }}
           />
         ) : (
           <div
-            className="h-full aspect-square rounded-lg flex items-center justify-center font-black"
+            className="aspect-square rounded-lg flex items-center justify-center font-black"
             style={{
+              height: "7.8vh",
               backgroundColor: `${accent}20`,
               color: accent,
               fontSize: "clamp(1.1rem, 1.8vw, 1.8rem)",
@@ -761,8 +762,12 @@ function Header({
         <img
           src={triadLogoSrc}
           alt="Triad Solutions"
-          className="h-full w-auto object-contain"
-          style={darkMode ? { filter: "brightness(0) invert(1)" } : undefined}
+          style={{
+            height: "7.8vh",
+            width: "auto",
+            objectFit: "contain",
+            ...(darkMode ? { filter: "brightness(0) invert(1)" } : {}),
+          }}
         />
       </div>
 
