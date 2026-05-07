@@ -93,9 +93,13 @@ export async function middleware(req: NextRequest) {
     }
   );
 
+  // Use getSession() for route gating — reads JWT from cookies without a
+  // network round-trip. getUser() (network-validated) is still called in
+  // requireTenantAccess / requireSuperAdmin inside the actual page components.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   // Apex / reserved subdomain — only gate /admin
   if (!tenant) {
