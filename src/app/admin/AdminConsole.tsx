@@ -85,7 +85,7 @@ export function AdminConsole({ customers }: { customers: CustomerRow[] }) {
         return;
       }
       setSuccessMsg(
-        `${name} registrerad. Inbjudan skickad till ${ownerEmail}. Kom ihåg att lägga till ${slug}.${APP_DOMAIN} i Vercel + DNS.`
+        `${name} registrerad. Inbjudan skickad till ${ownerEmail}.`
       );
       setSlug("");
       setName("");

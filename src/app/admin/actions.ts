@@ -114,7 +114,24 @@ export async function registerCustomer(input: {
     .upsert({ tenant_id: tenant.id, user_id: userId, role: "owner" });
   if (linkErr) return { ok: false, error: linkErr.message };
 
+  await addVercelDomain(`${slug}.${baseUrl}`);
+
   return { ok: true, tenantId: tenant.id };
+}
+
+async function addVercelDomain(domain: string): Promise<void> {
+  const token = process.env.VERCEL_TOKEN;
+  const projectId = process.env.VERCEL_PROJECT_ID;
+  if (!token || !projectId) return; // silently skip if not configured
+
+  await fetch(`https://api.vercel.com/v10/projects/${projectId}/domains`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: domain }),
+  });
 }
 
 export async function deleteTenant(input: {
