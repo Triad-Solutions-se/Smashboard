@@ -1698,13 +1698,13 @@ function ScoreStepper({
         aria-label={`${ariaLabel} öka`}
         onClick={() => onChange(Math.min(max, value + 1))}
         disabled={disabled || value >= max}
-        className="h-5 w-9 rounded-t border border-b-0 border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-30 flex items-center justify-center"
+        className="h-3 w-8 rounded-t border border-b-0 border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-30 flex items-center justify-center"
       >
-        <svg viewBox="0 0 10 6" className="w-2.5 h-1.5" aria-hidden>
+        <svg viewBox="0 0 10 6" className="w-2 h-1" aria-hidden>
           <path d="M0 6 L5 0 L10 6 Z" fill="currentColor" />
         </svg>
       </button>
-      <div className="h-7 w-9 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex items-center justify-center text-sm font-bold tabular-nums">
+      <div className="h-5 w-8 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex items-center justify-center text-sm font-bold tabular-nums">
         {value}
       </div>
       <button
@@ -1712,9 +1712,9 @@ function ScoreStepper({
         aria-label={`${ariaLabel} minska`}
         onClick={() => onChange(Math.max(0, value - 1))}
         disabled={disabled || value <= 0}
-        className="h-5 w-9 rounded-b border border-t-0 border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-30 flex items-center justify-center"
+        className="h-3 w-8 rounded-b border border-t-0 border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-30 flex items-center justify-center"
       >
-        <svg viewBox="0 0 10 6" className="w-2.5 h-1.5" aria-hidden>
+        <svg viewBox="0 0 10 6" className="w-2 h-1" aria-hidden>
           <path d="M0 0 L10 0 L5 6 Z" fill="currentColor" />
         </svg>
       </button>
@@ -1877,7 +1877,7 @@ function MatchRow({
   }
 
   return (
-    <div className={`px-3 py-1.5 ${isBlocked ? "bg-zinc-50/60 dark:bg-zinc-900/40" : ""}`}>
+    <div className={`px-3 py-1 ${isBlocked ? "bg-zinc-50/60 dark:bg-zinc-900/40" : ""}`}>
       <div className="flex items-center gap-2">
         <span
           className="flex-1 min-w-0 text-right text-sm font-medium truncate"
@@ -1887,7 +1887,7 @@ function MatchRow({
         </span>
 
         {showInputs ? (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <ScoreStepper
               value={s1}
               onChange={setS1}
@@ -1895,7 +1895,7 @@ function MatchRow({
               max={gamesPerMatch}
               ariaLabel={team1Label}
             />
-            <span className="text-zinc-400 text-sm">–</span>
+            <span className="text-zinc-400 text-xs">–</span>
             <ScoreStepper
               value={s2}
               onChange={setS2}
@@ -1905,7 +1905,7 @@ function MatchRow({
             />
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded bg-zinc-100 dark:bg-zinc-800/60 font-bold tabular-nums text-base">
+          <div className="flex items-center gap-1 shrink-0 px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800/60 font-bold tabular-nums text-sm">
             <span
               className={
                 isCompleted && (match.score_team1 ?? 0) > (match.score_team2 ?? 0)
@@ -1917,7 +1917,7 @@ function MatchRow({
             >
               {match.score_team1 ?? "–"}
             </span>
-            <span className="text-zinc-400 text-sm">–</span>
+            <span className="text-zinc-400 text-xs">–</span>
             <span
               className={
                 isCompleted && (match.score_team2 ?? 0) > (match.score_team1 ?? 0)
@@ -1945,7 +1945,7 @@ function MatchRow({
               type="button"
               onClick={handleSave}
               disabled={busy || !isValid}
-              className="px-2.5 h-9 rounded text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-2 h-7 rounded text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {busy ? "…" : "Klar"}
             </button>
@@ -1955,13 +1955,13 @@ function MatchRow({
               onClick={() => setEditing(true)}
               aria-label="Redigera resultat"
               title="Redigera resultat"
-              className="h-9 w-9 rounded text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 flex items-center justify-center"
+              className="h-7 w-7 rounded text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 flex items-center justify-center"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 20 20"
                 fill="currentColor"
-                className="w-4 h-4"
+                className="w-3.5 h-3.5"
                 aria-hidden
               >
                 <path d="M2.695 14.762l-1.262 3.155a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.886L17.5 5.5a2.121 2.121 0 0 0-3-3L3.58 13.419a4 4 0 0 0-.885 1.343Z" />
@@ -1970,14 +1970,14 @@ function MatchRow({
           ) : (
             <span
               aria-hidden
-              className="h-9 w-9 flex items-center justify-center text-amber-500"
+              className="h-7 w-7 flex items-center justify-center text-amber-500"
               title={reason ?? "Låst"}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 20 20"
                 fill="currentColor"
-                className="w-4 h-4"
+                className="w-3.5 h-3.5"
               >
                 <path
                   fillRule="evenodd"
@@ -2066,6 +2066,17 @@ function GroupColumn({
     }
     return r;
   }, [groupMatches]);
+
+  // Render order: current round at the top, future rounds next (ascending),
+  // and past completed rounds last so the active match is always the first
+  // thing the host sees.
+  const orderedRounds = useMemo(() => {
+    if (currentRound === null) return matchesByRound;
+    const current = matchesByRound.find(([r]) => r === currentRound);
+    const future = matchesByRound.filter(([r]) => r > currentRound);
+    const past = matchesByRound.filter(([r]) => r < currentRound);
+    return [...(current ? [current] : []), ...future, ...past];
+  }, [matchesByRound, currentRound]);
 
   const standings = useMemo(
     () => computeStandings(groupTeams, groupMatches, playerMap),
@@ -2165,10 +2176,10 @@ function GroupColumn({
       {/* Matches grouped by round. Past/future rounds render compact; the
           current round gets full-size match rows with steppers. */}
       <div>
-        {matchesByRound.length === 0 && (
+        {orderedRounds.length === 0 && (
           <div className="px-4 py-3 text-xs text-zinc-500">Inga matcher.</div>
         )}
-        {matchesByRound.map(([round, ms]) => {
+        {orderedRounds.map(([round, ms]) => {
           const isCurrent = currentRound !== null && round === currentRound;
           const isPast = currentRound === null || round < (currentRound ?? Infinity);
           return (
