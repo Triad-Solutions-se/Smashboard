@@ -205,7 +205,6 @@ function HostInner({
   const { tournament, groups, teams, matches, players, courts, rests } = data;
   const accent = tenant.primary_color || "#10b981";
 
-  const [rightTab, setRightTab] = useState<"tabeller" | "betalning">("tabeller");
   type PaidKey = `${string}-${1 | 2}`;
   const [paidKeys, setPaidKeys] = useState<Set<PaidKey>>(() => {
     const s = new Set<PaidKey>();
@@ -243,6 +242,63 @@ function HostInner({
     return m;
   }, [groups]);
   const groupIndexMap = useMemo(() => buildGroupIndex(groups), [groups]);
+  const courtMap = useMemo(() => {
+    const m = new Map<string, Court>();
+    for (const c of courts) m.set(c.id, c);
+    return m;
+  }, [courts]);
+
+  // Per-match UI state for the group-column list view: completed (locked with
+  // edit), ready (steppers visible), or blocked (waiting for a team's earlier
+  // round or the assigned court to free up).
+  type MatchUiState = "completed" | "ready" | "blocked";
+  const matchUiStates = useMemo(() => {
+    const map = new Map<string, { state: MatchUiState; reason: string | null }>();
+    for (const m of matches) {
+      if (m.stage !== "group") continue;
+      if (m.status === "completed") {
+        map.set(m.id, { state: "completed", reason: null });
+        continue;
+      }
+      const blockers: string[] = [];
+      for (const teamId of [m.team1_id, m.team2_id]) {
+        const earlier = matches.some(
+          (o) =>
+            o.id !== m.id &&
+            o.stage === "group" &&
+            o.status !== "completed" &&
+            o.round_number < m.round_number &&
+            (o.team1_id === teamId || o.team2_id === teamId)
+        );
+        if (earlier) {
+          const t = teamMap.get(teamId);
+          if (t) blockers.push(shortTeamName(t, playerMap));
+        }
+      }
+      let courtBusy: string | null = null;
+      if (m.court_id) {
+        const courtBlocking = matches.some(
+          (o) =>
+            o.id !== m.id &&
+            o.court_id === m.court_id &&
+            o.status !== "completed" &&
+            o.round_number < m.round_number
+        );
+        if (courtBlocking) {
+          courtBusy = courtMap.get(m.court_id)?.name ?? null;
+        }
+      }
+      if (blockers.length > 0 || courtBusy) {
+        const parts: string[] = [];
+        if (blockers.length > 0) parts.push(`Väntar på ${blockers.join(" & ")}`);
+        if (courtBusy) parts.push(`${courtBusy} upptagen`);
+        map.set(m.id, { state: "blocked", reason: parts.join(" · ") });
+      } else {
+        map.set(m.id, { state: "ready", reason: null });
+      }
+    }
+    return map;
+  }, [matches, teamMap, playerMap, courtMap]);
 
   const paymentRows: PaymentPlayerRow[] = useMemo(() => {
     const rows: PaymentPlayerRow[] = [];
@@ -797,261 +853,205 @@ function HostInner({
       )}
 
       <main className="px-5 py-4 grid lg:grid-cols-[1fr_300px] gap-5">
-        <section>
-          <div className="flex items-center justify-between mb-2 gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-              Aktiva matcher
-            </h2>
-            {runningKOStages.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                {runningKOStages.map((stage) => (
-                  <span
-                    key={stage}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold text-white"
-                    style={{ backgroundColor: koStageBadgeColor(stage) }}
-                  >
-                    {KO_STAGE_LABEL[stage] ?? stage}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-          {restingTeamIdsThisRound.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2">
-              {restingTeamIdsThisRound.map((tid) => {
-                const t = teamMap.get(tid);
-                if (!t) return null;
-                const name = shortTeamName(t, playerMap);
-                return (
-                  <div key={tid} title={`Vilar: ${name}`} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 max-w-[14rem] truncate cursor-default">
-                    Vilar: {name}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {/* During KO phase with multiple running stages, group courts by stage */}
-          {runningKOStages.length > 1 ? (
-            <div className="space-y-4">
-              {(["quarter_final", "semi_final", "final", "bronze"] as const).map((stage) => {
-                const stageCourts = sortedCourts.filter((c) => matchByCourt.get(c.id)?.stage === stage);
-                if (stageCourts.length === 0) return null;
-                return (
-                  <div key={stage}>
-                    <div className="flex items-center gap-2 mb-1.5">
+        <section className="min-w-0">
+          {!hasKO ? (
+            <>
+              {restingTeamIdsThisRound.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {restingTeamIdsThisRound.map((tid) => {
+                    const t = teamMap.get(tid);
+                    if (!t) return null;
+                    const name = shortTeamName(t, playerMap);
+                    return (
+                      <div
+                        key={tid}
+                        title={`Vilar: ${name}`}
+                        className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 max-w-[14rem] truncate cursor-default"
+                      >
+                        Vilar: {name}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {groups.length === 0 ? (
+                <div className="text-sm text-zinc-500">Inga grupper.</div>
+              ) : (
+                <div
+                  className="grid gap-3 items-start overflow-x-auto"
+                  style={{
+                    gridTemplateColumns: `repeat(${groups.length}, minmax(280px, 1fr))`,
+                  }}
+                >
+                  {groups.map((g, gi) => (
+                    <GroupColumn
+                      key={g.id}
+                      group={g}
+                      paletteIndex={gi}
+                      groupTeams={teams.filter((t) => t.group_id === g.id)}
+                      groupMatches={matches.filter(
+                        (m) => m.stage === "group" && m.group_id === g.id
+                      )}
+                      playerMap={playerMap}
+                      teamMap={teamMap}
+                      courtMap={courtMap}
+                      matchUiStates={matchUiStates}
+                      advancesPerGroup={advancesPerGroup}
+                      gamesPerMatch={tournament.games_per_match}
+                      onSave={saveScore}
+                      busyId={busy}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-2 gap-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                  Aktiva matcher
+                </h2>
+                {runningKOStages.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    {runningKOStages.map((stage) => (
                       <span
+                        key={stage}
                         className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold text-white"
                         style={{ backgroundColor: koStageBadgeColor(stage) }}
                       >
                         {KO_STAGE_LABEL[stage] ?? stage}
                       </span>
-                      <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
-                    </div>
-                    <div className={`grid gap-2 ${stageCourts.length > 1 ? "lg:grid-cols-2" : "grid-cols-1"}`}>
-                      {stageCourts.map((c) => {
-                        const m = matchByCourt.get(c.id)!;
-                        const blocking = blockedBy.get(c.id);
-                        if (blocking && blocking.length > 0) {
-                          return (
-                            <LockedCard
-                              key={m.id} match={m}
-                              team1={teamMap.get(m.team1_id)!} team2={teamMap.get(m.team2_id)!}
-                              playerMap={playerMap} courtName={c.name}
-                              stage={matchDisplayStageLabel(m)} badgeClass={badgeClassForMatch(m, groupIndexMap)}
-                              blockingTeams={blocking}
-                            />
-                          );
-                        }
-                        return (
-                          <MatchCard
-                            key={m.id} match={m}
-                            team1={teamMap.get(m.team1_id)!} team2={teamMap.get(m.team2_id)!}
-                            playerMap={playerMap} courtName={c.name}
-                            stage={matchDisplayStageLabel(m)} badgeClass={badgeClassForMatch(m, groupIndexMap)}
-                            onSave={(s1, s2) => saveScore(m, s1, s2)}
-                            busy={busy === m.id} gamesPerMatch={tournament.games_per_match}
-                          />
-                        );
-                      })}
-                    </div>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-          <div
-            className={`grid gap-2 ${courts.length > 1 ? "lg:grid-cols-2" : "grid-cols-1"}`}
-          >
-            {courts.length === 0 && (
-              <div className="text-sm text-zinc-500">Inga banor.</div>
-            )}
-            {sortedCourts.map((c) => {
-              const m = matchByCourt.get(c.id);
-              const isKOPhase = koMatches.some((km) => km.status !== "completed");
-              if (!m) {
-                if (isKOPhase) return null;
-                return <CourtIdle key={c.id} name={c.name} message="Klar – inga fler matcher" />;
-              }
-              const blocking = blockedBy.get(c.id);
-              if (blocking && blocking.length > 0) {
-                return (
-                  <LockedCard
-                    key={m.id}
-                    match={m}
-                    team1={teamMap.get(m.team1_id)!}
-                    team2={teamMap.get(m.team2_id)!}
-                    playerMap={playerMap}
-                    courtName={c.name}
-                    stage={matchDisplayStageLabel(m)}
-                    badgeClass={badgeClassForMatch(m, groupIndexMap)}
-                    blockingTeams={blocking}
-                  />
-                );
-              }
-              return (
-                <MatchCard
-                  key={m.id}
-                  match={m}
-                  team1={teamMap.get(m.team1_id)!}
-                  team2={teamMap.get(m.team2_id)!}
-                  playerMap={playerMap}
-                  courtName={c.name}
-                  stage={matchDisplayStageLabel(m)}
-                  badgeClass={badgeClassForMatch(m, groupIndexMap)}
-                  onSave={(s1, s2) => saveScore(m, s1, s2)}
-                  busy={busy === m.id}
-                  gamesPerMatch={tournament.games_per_match}
-                />
-              );
-            })}
-          </div>
+                )}
+              </div>
+              {runningKOStages.length > 1 ? (
+                <div className="space-y-4">
+                  {(["quarter_final", "semi_final", "final", "bronze"] as const).map((stage) => {
+                    const stageCourts = sortedCourts.filter(
+                      (c) => matchByCourt.get(c.id)?.stage === stage
+                    );
+                    if (stageCourts.length === 0) return null;
+                    return (
+                      <div key={stage}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold text-white"
+                            style={{ backgroundColor: koStageBadgeColor(stage) }}
+                          >
+                            {KO_STAGE_LABEL[stage] ?? stage}
+                          </span>
+                          <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+                        </div>
+                        <div
+                          className={`grid gap-2 ${stageCourts.length > 1 ? "lg:grid-cols-2" : "grid-cols-1"}`}
+                        >
+                          {stageCourts.map((c) => {
+                            const m = matchByCourt.get(c.id)!;
+                            const blocking = blockedBy.get(c.id);
+                            if (blocking && blocking.length > 0) {
+                              return (
+                                <LockedCard
+                                  key={m.id}
+                                  match={m}
+                                  team1={teamMap.get(m.team1_id)!}
+                                  team2={teamMap.get(m.team2_id)!}
+                                  playerMap={playerMap}
+                                  courtName={c.name}
+                                  stage={matchDisplayStageLabel(m)}
+                                  badgeClass={badgeClassForMatch(m, groupIndexMap)}
+                                  blockingTeams={blocking}
+                                />
+                              );
+                            }
+                            return (
+                              <MatchCard
+                                key={m.id}
+                                match={m}
+                                team1={teamMap.get(m.team1_id)!}
+                                team2={teamMap.get(m.team2_id)!}
+                                playerMap={playerMap}
+                                courtName={c.name}
+                                stage={matchDisplayStageLabel(m)}
+                                badgeClass={badgeClassForMatch(m, groupIndexMap)}
+                                onSave={(s1, s2) => saveScore(m, s1, s2)}
+                                busy={busy === m.id}
+                                gamesPerMatch={tournament.games_per_match}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  className={`grid gap-2 ${courts.length > 1 ? "lg:grid-cols-2" : "grid-cols-1"}`}
+                >
+                  {courts.length === 0 && (
+                    <div className="text-sm text-zinc-500">Inga banor.</div>
+                  )}
+                  {sortedCourts.map((c) => {
+                    const m = matchByCourt.get(c.id);
+                    if (!m) return null;
+                    const blocking = blockedBy.get(c.id);
+                    if (blocking && blocking.length > 0) {
+                      return (
+                        <LockedCard
+                          key={m.id}
+                          match={m}
+                          team1={teamMap.get(m.team1_id)!}
+                          team2={teamMap.get(m.team2_id)!}
+                          playerMap={playerMap}
+                          courtName={c.name}
+                          stage={matchDisplayStageLabel(m)}
+                          badgeClass={badgeClassForMatch(m, groupIndexMap)}
+                          blockingTeams={blocking}
+                        />
+                      );
+                    }
+                    return (
+                      <MatchCard
+                        key={m.id}
+                        match={m}
+                        team1={teamMap.get(m.team1_id)!}
+                        team2={teamMap.get(m.team2_id)!}
+                        playerMap={playerMap}
+                        courtName={c.name}
+                        stage={matchDisplayStageLabel(m)}
+                        badgeClass={badgeClassForMatch(m, groupIndexMap)}
+                        onSave={(s1, s2) => saveScore(m, s1, s2)}
+                        busy={busy === m.id}
+                        gamesPerMatch={tournament.games_per_match}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </section>
 
-        <section>
-          <div className="flex items-center gap-0 border-b border-zinc-200 dark:border-zinc-800 mb-3">
-            {(["tabeller", "betalning"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setRightTab(t)}
-                className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors capitalize ${
-                  rightTab === t
-                    ? "text-zinc-900 dark:text-zinc-100"
-                    : "text-zinc-500 border-transparent hover:text-zinc-700 dark:hover:text-zinc-300"
-                }`}
-                style={
-                  rightTab === t
-                    ? { borderColor: tenant.primary_color || "#10b981" }
-                    : undefined
-                }
-              >
-                {t === "tabeller" ? "Tabeller" : "Betalning"}
-              </button>
-            ))}
-          </div>
-
-          {rightTab === "tabeller" ? (
-            <div className="space-y-6">
-              {hasKO && (
-                <KOResultsPanel
-                  koMatches={koMatches}
-                  teamMap={teamMap}
-                  playerMap={playerMap}
-                />
-              )}
-              {groups.map((g, gi) => {
-                const groupTeams = teams.filter((t) => t.group_id === g.id);
-                const groupMatches = matches.filter((m) => m.group_id === g.id);
-                const standings = computeStandings(
-                  groupTeams,
-                  groupMatches,
-                  playerMap
-                );
-                const palette = groupPaletteFor(gi);
-                return (
-                  <div
-                    key={g.id}
-                    className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden"
-                  >
-                    <div
-                      className={`px-4 py-2 border-b font-medium text-sm ${palette.bar}`}
-                    >
-                      {g.name}
-                    </div>
-                    <table className="w-full text-xs">
-                      <thead className="text-zinc-500">
-                        <tr>
-                          <th className="px-2 py-2 w-8">#</th>
-                          <th className="text-left px-3 py-2 font-medium">Lag</th>
-                          <th className="px-2 py-2">
-                            <abbr
-                              title="Matcher spelade"
-                              className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
-                            >
-                              MP
-                            </abbr>
-                          </th>
-                          <th className="px-2 py-2">
-                            <abbr
-                              title="Vunna game"
-                              className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
-                            >
-                              GF
-                            </abbr>
-                          </th>
-                          <th className="px-2 py-2">
-                            <abbr
-                              title="Förlorade game"
-                              className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
-                            >
-                              GA
-                            </abbr>
-                          </th>
-                          <th className="px-2 py-2">
-                            <abbr
-                              title="Game-skillnad (vunna minus förlorade)"
-                              className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
-                            >
-                              GD
-                            </abbr>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {standings.map((s, i) => {
-                          const t = teamMap.get(s.team_id);
-                          return (
-                          <tr
-                            key={s.team_id}
-                            className="border-t border-zinc-100 dark:border-zinc-800"
-                          >
-                            <td className="px-2 py-2 text-center text-zinc-500">
-                              {i + 1}
-                            </td>
-                            <td className="px-3 py-2 whitespace-nowrap">{t ? shortTeamName(t, playerMap) : s.teamName}</td>
-                            <td className="px-2 py-2 text-center">{s.mp}</td>
-                            <td className="px-2 py-2 text-center">{s.gf}</td>
-                            <td className="px-2 py-2 text-center">{s.ga}</td>
-                            <td className="px-2 py-2 text-center font-semibold">
-                              {s.gd > 0 ? `+${s.gd}` : s.gd}
-                            </td>
-                          </tr>
-                        );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
+        <aside className="space-y-4">
+          {hasKO && (
+            <KOResultsPanel
+              koMatches={koMatches}
+              teamMap={teamMap}
+              playerMap={playerMap}
+            />
+          )}
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 mb-2">
+              Betalning
+            </h2>
             <PaymentPanel
               players={paymentRows}
               accent={tenant.primary_color || "#10b981"}
               onSetPaid={handleSetPaid}
             />
-          )}
-        </section>
+          </div>
+        </aside>
       </main>
     </div>
   );
@@ -1651,70 +1651,417 @@ function KOResultsPanel({
   );
 }
 
-function WaitingCard({
+function slutspelLabel(position: number, advancesPerGroup: number): string | null {
+  if (advancesPerGroup <= 0 || position > advancesPerGroup) return null;
+  return `${String.fromCharCode(64 + position)}-slutspel`;
+}
+
+function ScoreStepper({
+  value,
+  onChange,
+  disabled,
+  max,
+  ariaLabel,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  disabled?: boolean;
+  max: number;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="inline-flex flex-col items-stretch select-none text-zinc-700 dark:text-zinc-200">
+      <button
+        type="button"
+        aria-label={`${ariaLabel} öka`}
+        onClick={() => onChange(Math.min(max, value + 1))}
+        disabled={disabled || value >= max}
+        className="h-5 w-9 rounded-t border border-b-0 border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-30 flex items-center justify-center"
+      >
+        <svg viewBox="0 0 10 6" className="w-2.5 h-1.5" aria-hidden>
+          <path d="M0 6 L5 0 L10 6 Z" fill="currentColor" />
+        </svg>
+      </button>
+      <div className="h-7 w-9 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 flex items-center justify-center text-sm font-bold tabular-nums">
+        {value}
+      </div>
+      <button
+        type="button"
+        aria-label={`${ariaLabel} minska`}
+        onClick={() => onChange(Math.max(0, value - 1))}
+        disabled={disabled || value <= 0}
+        className="h-5 w-9 rounded-b border border-t-0 border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-30 flex items-center justify-center"
+      >
+        <svg viewBox="0 0 10 6" className="w-2.5 h-1.5" aria-hidden>
+          <path d="M0 0 L10 0 L5 6 Z" fill="currentColor" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+type MatchUiStateKey = "ready" | "completed" | "blocked";
+
+function MatchRow({
   match,
   team1,
   team2,
   playerMap,
   courtName,
-  stage,
-  badgeClass,
+  uiState,
+  reason,
+  gamesPerMatch,
+  onSave,
+  busy,
 }: {
   match: TournamentMatch;
-  team1: TournamentTeam;
-  team2: TournamentTeam;
+  team1: TournamentTeam | undefined;
+  team2: TournamentTeam | undefined;
   playerMap: Map<string, Player>;
-  courtName: string;
-  stage: string;
-  badgeClass: string;
+  courtName: string | null;
+  uiState: MatchUiStateKey;
+  reason: string | null;
+  gamesPerMatch: number;
+  onSave: (m: TournamentMatch, s1: number, s2: number) => Promise<void>;
+  busy: boolean;
 }) {
-  const s1 = match.score_team1 ?? 0;
-  const s2 = match.score_team2 ?? 0;
-  const team1Won = s1 > s2;
-  const team2Won = s2 > s1;
-  const team1Label = shortTeamName(team1, playerMap);
-  const team2Label = shortTeamName(team2, playerMap);
+  const [editing, setEditing] = useState(false);
+  const [s1, setS1] = useState<number>(match.score_team1 ?? 0);
+  const [s2, setS2] = useState<number>(match.score_team2 ?? 0);
+
+  // Sync local steppers to incoming match data (e.g. realtime updates),
+  // unless the user is currently editing a completed match.
+  useEffect(() => {
+    if (editing) return;
+    setS1(match.score_team1 ?? 0);
+    setS2(match.score_team2 ?? 0);
+  }, [match.id, match.score_team1, match.score_team2, editing]);
+
+  const isCompleted = uiState === "completed";
+  const isBlocked = uiState === "blocked";
+  const showInputs = uiState === "ready" || (isCompleted && editing);
+
+  const isValid =
+    s1 !== s2 &&
+    (s1 === gamesPerMatch || s2 === gamesPerMatch) &&
+    s1 <= gamesPerMatch &&
+    s2 <= gamesPerMatch;
+
+  async function handleSave() {
+    if (!isValid) return;
+    await onSave(match, s1, s2);
+    setEditing(false);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setS1(match.score_team1 ?? 0);
+    setS2(match.score_team2 ?? 0);
+  }
+
+  const team1Label = team1 ? shortTeamName(team1, playerMap) : "?";
+  const team2Label = team2 ? shortTeamName(team2, playerMap) : "?";
+
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-900/40 p-2.5 opacity-70">
-      <div className="flex justify-between items-center text-[10px] uppercase tracking-wide text-zinc-500 mb-1.5">
-        <span className="font-semibold">{courtName}</span>
-        <div className="flex items-center gap-1.5">
-          <span
-            className={`px-1.5 py-px rounded font-semibold ${badgeClass}`}
-          >
-            {stage}
-          </span>
-          <span className="font-semibold text-zinc-500">Klar · väntar</span>
+    <div className={`px-3 py-2 ${isBlocked ? "bg-zinc-50/60 dark:bg-zinc-900/40" : ""}`}>
+      <div className="flex items-center gap-2">
+        <span
+          className="flex-1 min-w-0 text-right text-sm font-medium truncate"
+          title={team1Label}
+        >
+          {team1Label}
+        </span>
+
+        {showInputs ? (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <ScoreStepper
+              value={s1}
+              onChange={setS1}
+              disabled={busy}
+              max={gamesPerMatch}
+              ariaLabel={team1Label}
+            />
+            <span className="text-zinc-400 text-sm">–</span>
+            <ScoreStepper
+              value={s2}
+              onChange={setS2}
+              disabled={busy}
+              max={gamesPerMatch}
+              ariaLabel={team2Label}
+            />
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded bg-zinc-100 dark:bg-zinc-800/60 font-bold tabular-nums text-base">
+            <span
+              className={
+                isCompleted && (match.score_team1 ?? 0) > (match.score_team2 ?? 0)
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : isCompleted
+                  ? "text-zinc-400"
+                  : "text-zinc-300"
+              }
+            >
+              {match.score_team1 ?? "–"}
+            </span>
+            <span className="text-zinc-400 text-sm">–</span>
+            <span
+              className={
+                isCompleted && (match.score_team2 ?? 0) > (match.score_team1 ?? 0)
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : isCompleted
+                  ? "text-zinc-400"
+                  : "text-zinc-300"
+              }
+            >
+              {match.score_team2 ?? "–"}
+            </span>
+          </div>
+        )}
+
+        <span
+          className="flex-1 min-w-0 text-left text-sm font-medium truncate"
+          title={team2Label}
+        >
+          {team2Label}
+        </span>
+
+        <div className="shrink-0 flex items-center">
+          {showInputs ? (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={busy || !isValid}
+              className="px-2.5 h-9 rounded text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {busy ? "…" : "Klar"}
+            </button>
+          ) : isCompleted ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label="Redigera resultat"
+              title="Redigera resultat"
+              className="h-9 w-9 rounded text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 flex items-center justify-center"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="w-4 h-4"
+                aria-hidden
+              >
+                <path d="M2.695 14.762l-1.262 3.155a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.886L17.5 5.5a2.121 2.121 0 0 0-3-3L3.58 13.419a4 4 0 0 0-.885 1.343Z" />
+              </svg>
+            </button>
+          ) : (
+            <span
+              aria-hidden
+              className="h-9 w-9 flex items-center justify-center text-amber-500"
+              title={reason ?? "Låst"}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="w-4 h-4"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </span>
+          )}
         </div>
       </div>
-      <div className="flex items-center gap-2 h-9">
-        <div className="flex-1 min-w-0 text-right text-sm font-medium truncate">
-          {team1Label}
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0 font-bold tabular-nums text-lg">
-          <span
-            className={
-              team1Won
-                ? "text-emerald-700 dark:text-emerald-400"
-                : "text-zinc-400"
-            }
+
+      <div className="mt-1 flex items-center gap-2 text-[10px] text-zinc-400 pl-1 min-h-[14px]">
+        {courtName && <span className="font-medium">{courtName}</span>}
+        {isBlocked && reason && (
+          <>
+            {courtName && <span className="text-zinc-300">·</span>}
+            <span className="text-amber-600 dark:text-amber-400 font-medium truncate">
+              {reason}
+            </span>
+          </>
+        )}
+        {isCompleted && editing && (
+          <button
+            type="button"
+            onClick={cancelEdit}
+            className="ml-auto text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100"
           >
-            {s1}
-          </span>
-          <span className="text-zinc-400 text-sm">–</span>
-          <span
-            className={
-              team2Won
-                ? "text-emerald-700 dark:text-emerald-400"
-                : "text-zinc-400"
-            }
-          >
-            {s2}
-          </span>
-        </div>
-        <div className="flex-1 min-w-0 text-left text-sm font-medium truncate">
-          {team2Label}
-        </div>
+            Avbryt
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GroupColumn({
+  group,
+  paletteIndex,
+  groupTeams,
+  groupMatches,
+  playerMap,
+  teamMap,
+  courtMap,
+  matchUiStates,
+  advancesPerGroup,
+  gamesPerMatch,
+  onSave,
+  busyId,
+}: {
+  group: TournamentGroup;
+  paletteIndex: number;
+  groupTeams: TournamentTeam[];
+  groupMatches: TournamentMatch[];
+  playerMap: Map<string, Player>;
+  teamMap: Map<string, TournamentTeam>;
+  courtMap: Map<string, Court>;
+  matchUiStates: Map<string, { state: MatchUiStateKey; reason: string | null }>;
+  advancesPerGroup: number;
+  gamesPerMatch: number;
+  onSave: (m: TournamentMatch, s1: number, s2: number) => Promise<void>;
+  busyId: string | null;
+}) {
+  const palette = groupPaletteFor(paletteIndex);
+
+  const matchesByRound = useMemo(() => {
+    const map = new Map<number, TournamentMatch[]>();
+    for (const m of groupMatches) {
+      const arr = map.get(m.round_number) ?? [];
+      arr.push(m);
+      map.set(m.round_number, arr);
+    }
+    return [...map.entries()].sort((a, b) => a[0] - b[0]);
+  }, [groupMatches]);
+
+  const standings = useMemo(
+    () => computeStandings(groupTeams, groupMatches, playerMap),
+    [groupTeams, groupMatches, playerMap]
+  );
+
+  return (
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col min-w-0">
+      <div className={`px-4 py-2 border-b font-semibold text-sm ${palette.bar}`}>
+        {group.name}
+      </div>
+
+      <div>
+        {matchesByRound.length === 0 && (
+          <div className="px-4 py-3 text-xs text-zinc-500">Inga matcher.</div>
+        )}
+        {matchesByRound.map(([round, ms]) => (
+          <div key={round}>
+            <div className="px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900/60 text-[10px] font-bold uppercase tracking-wide text-zinc-500 border-y border-zinc-100 dark:border-zinc-800">
+              Omgång {round}
+            </div>
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {ms.map((m) => {
+                const ui =
+                  matchUiStates.get(m.id) ?? { state: "ready" as const, reason: null };
+                return (
+                  <MatchRow
+                    key={m.id}
+                    match={m}
+                    team1={teamMap.get(m.team1_id)}
+                    team2={teamMap.get(m.team2_id)}
+                    playerMap={playerMap}
+                    courtName={
+                      m.court_id ? courtMap.get(m.court_id)?.name ?? null : null
+                    }
+                    uiState={ui.state}
+                    reason={ui.reason}
+                    gamesPerMatch={gamesPerMatch}
+                    onSave={onSave}
+                    busy={busyId === m.id}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t-2 border-zinc-200 dark:border-zinc-800">
+        <table className="w-full text-xs">
+          <thead className="text-zinc-500 bg-zinc-50/60 dark:bg-zinc-900/40">
+            <tr>
+              <th className="px-2 py-2 w-7">#</th>
+              <th className="text-left px-2 py-2 font-medium">Lag</th>
+              <th className="px-1 py-2">
+                <abbr
+                  title="Matcher spelade"
+                  className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
+                >
+                  MP
+                </abbr>
+              </th>
+              <th className="px-1 py-2">
+                <abbr
+                  title="Vunna game"
+                  className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
+                >
+                  GF
+                </abbr>
+              </th>
+              <th className="px-1 py-2">
+                <abbr
+                  title="Förlorade game"
+                  className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
+                >
+                  GA
+                </abbr>
+              </th>
+              <th className="px-1 py-2">
+                <abbr
+                  title="Game-skillnad"
+                  className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
+                >
+                  GD
+                </abbr>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {standings.map((s, i) => {
+              const t = teamMap.get(s.team_id);
+              const slutspel = slutspelLabel(i + 1, advancesPerGroup);
+              return (
+                <tr
+                  key={s.team_id}
+                  className={`border-t border-zinc-100 dark:border-zinc-800 ${slutspel ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
+                >
+                  <td className="px-2 py-2 text-center text-zinc-500 align-top">
+                    {i + 1}
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    <div
+                      className="font-medium truncate"
+                      title={t ? teamName(t, playerMap) : s.teamName}
+                    >
+                      {t ? shortTeamName(t, playerMap) : s.teamName}
+                    </div>
+                    {slutspel && (
+                      <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                        → {slutspel}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-1 py-2 text-center align-top">{s.mp}</td>
+                  <td className="px-1 py-2 text-center align-top">{s.gf}</td>
+                  <td className="px-1 py-2 text-center align-top">{s.ga}</td>
+                  <td className="px-1 py-2 text-center font-semibold align-top">
+                    {s.gd > 0 ? `+${s.gd}` : s.gd}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -1772,15 +2119,3 @@ function LockedCard({
   );
 }
 
-function CourtIdle({ name, message }: { name: string; message: string }) {
-  return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 p-2.5 opacity-70 flex flex-col">
-      <div className="text-[10px] uppercase tracking-wide text-zinc-500 font-semibold">
-        {name}
-      </div>
-      <div className="h-9 flex items-center justify-center text-xs text-zinc-400">
-        {message}
-      </div>
-    </div>
-  );
-}
