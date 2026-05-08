@@ -98,6 +98,7 @@ export type TournamentMatch = {
   score_team2: number | null;
   status: MatchStatus;
   stage: MatchStage;
+  bracket: string | null;
   created_at: string;
 };
 

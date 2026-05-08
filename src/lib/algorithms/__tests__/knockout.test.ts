@@ -1,19 +1,26 @@
 /**
- * Playoff / knockout bracket tests.
+ * Playoff / knockout bracket tests — multi-bracket model.
+ *
+ * Each rank that advances from the group stage forms its own bracket:
+ *   1st-place finishers → A-slutspel
+ *   2nd-place finishers → B-slutspel
+ *   3rd-place finishers → C-slutspel
+ *   …
+ *
+ * Single-group tournaments fall back to a single A-slutspel containing all
+ * advancing teams (legacy single-bracket behavior).
  *
  * Run with:  npx jest src/lib/algorithms/__tests__/knockout.test.ts
- *
- * Each test builds a realistic group-stage result (standings), feeds it into
- * generateFirstKORound / generateNextKORound, and asserts the exact match-ups
- * and stage progression you should see in the host UI.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   generateFirstKORound,
   generateNextKORound,
   firstKOStage,
   byeCount,
+  bracketCount,
+  bracketLetter,
   type GroupStanding,
   type GeneratedKOMatch,
 } from "../knockout";
@@ -23,7 +30,7 @@ import type { Court, TournamentMatch } from "../../supabase/types";
 // Helpers
 // ---------------------------------------------------------------------------
 
-const TOURNAMENT_ID = "t-test";
+const TID = "t-test";
 
 function makeCourts(n: number): Court[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -38,7 +45,11 @@ function makeStanding(teamId: string): import("../../standings").TeamStanding {
   return { team_id: teamId, teamName: teamId, mp: 0, gf: 0, ga: 0, gd: 0 };
 }
 
-function makeGroup(id: string, name: string, sortOrder: number, teamIds: string[]): GroupStanding {
+function makeGroup(
+  id: string,
+  name: string,
+  teamIds: string[]
+): GroupStanding {
   return {
     groupId: id,
     groupName: name,
@@ -46,7 +57,6 @@ function makeGroup(id: string, name: string, sortOrder: number, teamIds: string[
   };
 }
 
-/** Simulate a completed match (team1 always wins by 1 point). */
 function completeMatch(m: GeneratedKOMatch, idx: number): TournamentMatch {
   return {
     id: `match-${idx}`,
@@ -61,340 +71,228 @@ function completeMatch(m: GeneratedKOMatch, idx: number): TournamentMatch {
     score_team2: 6,
     status: "completed",
     stage: m.stage,
-  };
-}
-
-/** Like completeMatch but team2 wins. */
-function completeMatchTeam2Wins(m: GeneratedKOMatch, idx: number): TournamentMatch {
-  return {
-    ...completeMatch(m, idx),
-    score_team1: 6,
-    score_team2: 7,
+    bracket: m.bracket,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 1 – 2 groups × 1 advances  →  straight Final (2 teams)
+// Bracket count + letter
 // ---------------------------------------------------------------------------
-describe("Scenario 1: 2 groups × 1 advance → Final", () => {
-  /**
-   * Setup:
-   *   Group A: A1 > A2 > A3
-   *   Group B: B1 > B2 > B3
-   *   advances_per_group = 1
-   *
-   * Expected first KO round:
-   *   Final: A1 vs B1
-   *
-   * Expected result after Final:
-   *   Winner declared (no next round)
-   */
+
+describe("bracketCount + bracketLetter", () => {
+  it("returns 1 for a single group", () => {
+    const groups = [makeGroup("g-a", "A", ["A1", "A2", "A3"])];
+    expect(bracketCount(groups)).toBe(1);
+  });
+
+  it("returns advances_per_group when ≥2 groups", () => {
+    const g = (id: string, teams: string[]) => makeGroup(id, id, teams);
+    expect(bracketCount([g("a", ["A1"]), g("b", ["B1"])])).toBe(1);
+    expect(bracketCount([g("a", ["A1", "A2"]), g("b", ["B1", "B2"])])).toBe(2);
+    expect(
+      bracketCount([
+        g("a", ["A1", "A2", "A3"]),
+        g("b", ["B1", "B2", "B3"]),
+        g("c", ["C1", "C2", "C3"]),
+      ])
+    ).toBe(3);
+  });
+
+  it("bracketLetter maps 0..3 to A..D", () => {
+    expect(bracketLetter(0)).toBe("A");
+    expect(bracketLetter(1)).toBe("B");
+    expect(bracketLetter(2)).toBe("C");
+    expect(bracketLetter(3)).toBe("D");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario 1 — 2 groups × 1 advance → single A-slutspel Final
+// ---------------------------------------------------------------------------
+describe("2 groups × 1 advance → A-slutspel Final", () => {
   const groups: GroupStanding[] = [
-    makeGroup("g-a", "Grupp A", 0, ["A1", "A2", "A3"]),
-    makeGroup("g-b", "Grupp B", 1, ["B1", "B2", "B3"]),
+    makeGroup("g-a", "Grupp A", ["A1"]),
+    makeGroup("g-b", "Grupp B", ["B1"]),
   ];
-  // Only 1st place advances from each group
-  const advancing = groups.map((g) => ({ ...g, standings: g.standings.slice(0, 1) }));
   const courts = makeCourts(1);
 
-  it("generates a single Final match", () => {
-    const matches = generateFirstKORound(advancing, [], courts, TOURNAMENT_ID, false);
+  it("generates a single Final in bracket A", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
     expect(matches).toHaveLength(1);
     expect(matches[0].stage).toBe("final");
+    expect(matches[0].bracket).toBe("A");
     expect(matches[0].team1_id).toBe("A1");
     expect(matches[0].team2_id).toBe("B1");
   });
 
-  it("firstKOStage returns 'final' for 2 teams", () => {
-    expect(firstKOStage(2)).toBe("final");
-  });
-
-  it("no next round after Final", () => {
-    const finalMatch = generateFirstKORound(advancing, [], courts, TOURNAMENT_ID, false);
-    const completed = finalMatch.map((m, i) => completeMatch(m, i));
-    const next = generateNextKORound(completed, [], courts, TOURNAMENT_ID, false);
-    expect(next).toHaveLength(0);
+  it("no next round after the Final", () => {
+    const final = generateFirstKORound(groups, [], courts, TID, false);
+    const completed = final.map((m, i) => completeMatch(m, i));
+    expect(generateNextKORound(completed, [], courts, TID, false)).toHaveLength(0);
   });
 
   it("byeCount is always 0", () => {
-    expect(byeCount(advancing)).toBe(0);
+    expect(byeCount(groups)).toBe(0);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 2 – 2 groups × 2 advances  →  Semi-finals (4 teams, no byes)
+// Scenario 2 — 2 groups × 2 advance → A-slutspel Final + B-slutspel Final
 // ---------------------------------------------------------------------------
-describe("Scenario 2: 2 groups × 2 advance → Semi-finals → Final", () => {
-  /**
-   * Setup:
-   *   Group A: A1, A2 advance
-   *   Group B: B1, B2 advance
-   *   4 total advancing → semi_final stage
-   *
-   * Expected semi-final match-ups (classic seeding 1v4, 2v3):
-   *   SF1: A1 (seed 1) vs B2 (seed 4)
-   *   SF2: B1 (seed 2) vs A2 (seed 3)
-   *
-   * collectSeeds interleaves by rank: rank-0 = [A1, B1], rank-1 = [A2, B2]
-   * So allTeams = [A1, B1, A2, B2]
-   * SF1: allTeams[0] vs allTeams[3] = A1 vs B2  ✓
-   * SF2: allTeams[1] vs allTeams[2] = B1 vs A2  ✓
-   *
-   * After SF1 (A1 wins) and SF2 (B1 wins):
-   *   Final: A1 vs B1
-   *
-   * With hasBronze=true:
-   *   Bronze: B2 vs A2
-   */
+describe("2 groups × 2 advance → A-slutspel + B-slutspel each play a Final", () => {
   const groups: GroupStanding[] = [
-    makeGroup("g-a", "Grupp A", 0, ["A1", "A2", "A3"]),
-    makeGroup("g-b", "Grupp B", 1, ["B1", "B2", "B3"]),
+    makeGroup("g-a", "Grupp A", ["A1", "A2"]),
+    makeGroup("g-b", "Grupp B", ["B1", "B2"]),
   ];
-  const advancing = groups.map((g) => ({ ...g, standings: g.standings.slice(0, 2) }));
   const courts = makeCourts(2);
 
-  let sfMatches: GeneratedKOMatch[];
-
-  beforeEach(() => {
-    sfMatches = generateFirstKORound(advancing, [], courts, TOURNAMENT_ID, true);
+  it("generates 2 Finals (one per bracket), no SF/QF anywhere", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    expect(matches).toHaveLength(2);
+    expect(matches.every((m) => m.stage === "final")).toBe(true);
   });
 
-  it("generates 2 semi-final matches", () => {
-    expect(sfMatches).toHaveLength(2);
-    expect(sfMatches.every((m) => m.stage === "semi_final")).toBe(true);
+  it("A-slutspel pairs the rank-0 teams (A1 vs B1)", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    const a = matches.find((m) => m.bracket === "A")!;
+    expect(a).toBeDefined();
+    expect(a.team1_id).toBe("A1");
+    expect(a.team2_id).toBe("B1");
   });
 
-  it("SF1: A1 vs B2 (seed 1 vs seed 4)", () => {
-    expect(sfMatches[0].team1_id).toBe("A1");
-    expect(sfMatches[0].team2_id).toBe("B2");
-  });
-
-  it("SF2: B1 vs A2 (seed 2 vs seed 3)", () => {
-    expect(sfMatches[1].team1_id).toBe("B1");
-    expect(sfMatches[1].team2_id).toBe("A2");
-  });
-
-  it("generates Final + Bronze after both SFs complete (team1 wins each)", () => {
-    const completed = sfMatches.map((m, i) => completeMatch(m, i));
-    const nextRound = generateNextKORound(completed, [], courts, TOURNAMENT_ID, true);
-    const final = nextRound.filter((m) => m.stage === "final");
-    const bronze = nextRound.filter((m) => m.stage === "bronze");
-
-    expect(final).toHaveLength(1);
-    expect(bronze).toHaveLength(1);
-
-    // SF1: A1 vs B2 (A1 wins). SF2: B1 vs A2 (B1 wins).
-    // entrants = [A1, B1] (winners in order), cross-pair: A1 vs B1 ✓
-    expect(final[0].team1_id).toBe("A1");
-    expect(final[0].team2_id).toBe("B1");
-
-    // Losers: B2 and A2
-    expect(bronze[0].team1_id).toBe("B2");
-    expect(bronze[0].team2_id).toBe("A2");
-  });
-
-  it("Final winner is team2 when team2 wins", () => {
-    // SF1: B2 upsets A1. SF2: A2 upsets B1.
-    const completed = sfMatches.map((m, i) => completeMatchTeam2Wins(m, i));
-    const nextRound = generateNextKORound(completed, [], courts, TOURNAMENT_ID, false);
-    const final = nextRound.find((m) => m.stage === "final")!;
-    expect(final.team1_id).toBe("B2");
-    expect(final.team2_id).toBe("A2");
-  });
-
-  it("no next round after Final", () => {
-    const completed = sfMatches.map((m, i) => completeMatch(m, i));
-    const [finalMatch] = generateNextKORound(completed, [], courts, TOURNAMENT_ID, false);
-    const completedFinal = [completeMatch(finalMatch, 99)];
-    const afterFinal = generateNextKORound(completedFinal, [], courts, TOURNAMENT_ID, false);
-    expect(afterFinal).toHaveLength(0);
+  it("B-slutspel pairs the rank-1 teams (A2 vs B2)", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    const b = matches.find((m) => m.bracket === "B")!;
+    expect(b).toBeDefined();
+    expect(b.team1_id).toBe("A2");
+    expect(b.team2_id).toBe("B2");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 3 – 3 groups × 1 advance  →  Semi-finals (3 teams, 1 bye)
+// Scenario 3 — 3 groups × 1 advance → A-slutspel only, 3 teams → SF with 1 bye
 // ---------------------------------------------------------------------------
-describe("Scenario 3: 3 groups × 1 advance → SF with 1 internal bye", () => {
-  /**
-   * Setup:
-   *   Group A: A1 advances
-   *   Group B: B1 advances
-   *   Group C: C1 advances
-   *   3 total advancing → semi_final stage
-   *   bracketSize = nextPowerOf2(3) = 4 → internalByeCount = 1
-   *   Top seed (A1) gets the bye.
-   *   B1 vs C1 play a "quarter_final" play-in.
-   *   Winner of B1 vs C1 meets A1 in SF.
-   *
-   * Expected first KO round:
-   *   1 match: stage = "quarter_final", B1 vs C1  (play-in)
-   *
-   * After B1 wins the play-in:
-   *   Next round: SF: A1 vs B1
-   */
+describe("3 groups × 1 advance → A-slutspel SF with 1 internal bye", () => {
   const groups: GroupStanding[] = [
-    makeGroup("g-a", "Grupp A", 0, ["A1", "A2"]),
-    makeGroup("g-b", "Grupp B", 1, ["B1", "B2"]),
-    makeGroup("g-c", "Grupp C", 2, ["C1", "C2"]),
+    makeGroup("g-a", "Grupp A", ["A1"]),
+    makeGroup("g-b", "Grupp B", ["B1"]),
+    makeGroup("g-c", "Grupp C", ["C1"]),
   ];
-  const advancing = groups.map((g) => ({ ...g, standings: g.standings.slice(0, 1) }));
   const courts = makeCourts(2);
 
-  let playInMatches: GeneratedKOMatch[];
-
-  beforeEach(() => {
-    playInMatches = generateFirstKORound(advancing, [], courts, TOURNAMENT_ID, false);
+  it("generates 1 play-in match in bracket A at quarter_final stage", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].stage).toBe("quarter_final");
+    expect(matches[0].bracket).toBe("A");
   });
 
-  it("generates 1 play-in match at quarter_final stage", () => {
-    expect(playInMatches).toHaveLength(1);
-    expect(playInMatches[0].stage).toBe("quarter_final");
+  it("play-in is B1 vs C1 (top seed A1 gets the bye)", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    expect(matches[0].team1_id).toBe("B1");
+    expect(matches[0].team2_id).toBe("C1");
   });
 
-  it("play-in is B1 vs C1 (seeds 2 & 3 — top seed A1 gets the bye)", () => {
-    // allTeams = [A1, B1, C1]; byeTeams = [A1]; playingTeams = [B1, C1]
-    expect(playInMatches[0].team1_id).toBe("B1");
-    expect(playInMatches[0].team2_id).toBe("C1");
-  });
-
-  it("after play-in, generates Final: A1 (bye) vs B1 (play-in winner)", () => {
-    // The host must pass A1 as a byeTeamId when calling generateNextKORound.
-    // entrants = ["A1", "B1"], n=2 → stage="final", cross-pair: A1 vs B1
-    const completed = playInMatches.map((m, i) => completeMatch(m, i)); // B1 wins
-    const next = generateNextKORound(completed, ["A1"], courts, TOURNAMENT_ID, false);
+  it("after play-in, the Final is A1 (bye) vs B1 (winner) and stays in bracket A", () => {
+    const playIn = generateFirstKORound(groups, [], courts, TID, false);
+    const completed = playIn.map((m, i) => completeMatch(m, i));
+    const next = generateNextKORound(completed, ["A1"], courts, TID, false);
     expect(next).toHaveLength(1);
     expect(next[0].stage).toBe("final");
-    expect(next[0].team1_id).toBe("A1"); // bye team (top seed)
-    expect(next[0].team2_id).toBe("B1"); // play-in winner
+    expect(next[0].bracket).toBe("A");
+    expect(next[0].team1_id).toBe("A1");
+    expect(next[0].team2_id).toBe("B1");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 4 – 4 groups × 2 advances  →  Quarter-finals (8 teams, no byes)
+// Scenario 4 — 4 groups × 2 advance → A-slutspel + B-slutspel, each 4-team SF
 // ---------------------------------------------------------------------------
-describe("Scenario 4: 4 groups × 2 advance → QF → SF → Final", () => {
-  /**
-   * Setup:
-   *   Group A: A1, A2
-   *   Group B: B1, B2
-   *   Group C: C1, C2
-   *   Group D: D1, D2
-   *   8 total advancing → quarter_final stage, no internal byes
-   *
-   * collectSeeds interleaves:
-   *   rank-0: A1, B1, C1, D1
-   *   rank-1: A2, B2, C2, D2
-   *   allTeams = [A1, B1, C1, D1, A2, B2, C2, D2]
-   *
-   * Classic QF seeding (seed i vs seed n-1-i for i=0..3):
-   *   QF1: A1 (1) vs D2 (8)
-   *   QF2: B1 (2) vs C2 (7)
-   *   QF3: C1 (3) vs B2 (6)
-   *   QF4: D1 (4) vs A2 (5)
-   *
-   * After QF (top seeds all win):
-   *   SF1: A1 vs C1  (QF1 winner vs QF3 winner)
-   *   SF2: B1 vs D1  (QF2 winner vs QF4 winner)
-   *
-   * After SF (top seeds win):
-   *   Final: A1 vs B1
-   */
+describe("4 groups × 2 advance → two 4-team brackets", () => {
   const groups: GroupStanding[] = [
-    makeGroup("g-a", "Grupp A", 0, ["A1", "A2", "A3"]),
-    makeGroup("g-b", "Grupp B", 1, ["B1", "B2", "B3"]),
-    makeGroup("g-c", "Grupp C", 2, ["C1", "C2", "C3"]),
-    makeGroup("g-d", "Grupp D", 3, ["D1", "D2", "D3"]),
+    makeGroup("g-a", "Grupp A", ["A1", "A2"]),
+    makeGroup("g-b", "Grupp B", ["B1", "B2"]),
+    makeGroup("g-c", "Grupp C", ["C1", "C2"]),
+    makeGroup("g-d", "Grupp D", ["D1", "D2"]),
   ];
-  const advancing = groups.map((g) => ({ ...g, standings: g.standings.slice(0, 2) }));
   const courts = makeCourts(4);
 
-  let qfMatches: GeneratedKOMatch[];
-
-  beforeEach(() => {
-    qfMatches = generateFirstKORound(advancing, [], courts, TOURNAMENT_ID, true);
+  it("generates 4 SFs total: 2 in bracket A, 2 in bracket B", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, true);
+    expect(matches).toHaveLength(4);
+    expect(matches.every((m) => m.stage === "semi_final")).toBe(true);
+    expect(matches.filter((m) => m.bracket === "A")).toHaveLength(2);
+    expect(matches.filter((m) => m.bracket === "B")).toHaveLength(2);
   });
 
-  it("generates 4 quarter-final matches", () => {
-    expect(qfMatches).toHaveLength(4);
-    expect(qfMatches.every((m) => m.stage === "quarter_final")).toBe(true);
+  it("A-slutspel teams are A1 B1 C1 D1 only", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    const a = matches.filter((m) => m.bracket === "A");
+    const teams = new Set(a.flatMap((m) => [m.team1_id, m.team2_id]));
+    expect(teams).toEqual(new Set(["A1", "B1", "C1", "D1"]));
   });
 
-  it("QF1: A1 vs D2 (seed 1 vs seed 8)", () => {
-    expect(qfMatches[0].team1_id).toBe("A1");
-    expect(qfMatches[0].team2_id).toBe("D2");
+  it("B-slutspel teams are A2 B2 C2 D2 only", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    const b = matches.filter((m) => m.bracket === "B");
+    const teams = new Set(b.flatMap((m) => [m.team1_id, m.team2_id]));
+    expect(teams).toEqual(new Set(["A2", "B2", "C2", "D2"]));
   });
 
-  it("QF2: B1 vs C2 (seed 2 vs seed 7)", () => {
-    expect(qfMatches[1].team1_id).toBe("B1");
-    expect(qfMatches[1].team2_id).toBe("C2");
+  it("each bracket runs on its own subset of courts (round-robin split)", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    const aCourts = matches.filter((m) => m.bracket === "A").map((m) => m.court_id);
+    const bCourts = matches.filter((m) => m.bracket === "B").map((m) => m.court_id);
+    // No overlap between bracket A and B court IDs
+    const overlap = aCourts.filter((c) => bCourts.includes(c));
+    expect(overlap).toHaveLength(0);
   });
 
-  it("QF3: C1 vs B2 (seed 3 vs seed 6)", () => {
-    expect(qfMatches[2].team1_id).toBe("C1");
-    expect(qfMatches[2].team2_id).toBe("B2");
+  it("next round after both A-slutspel SFs gives a Final + Bronze in bracket A", () => {
+    const sfs = generateFirstKORound(groups, [], courts, TID, true);
+    const aSfs = sfs.filter((m) => m.bracket === "A");
+    const completed = aSfs.map((m, i) => completeMatch(m, i));
+    const next = generateNextKORound(completed, [], courts, TID, true);
+    expect(next.find((m) => m.stage === "final")?.bracket).toBe("A");
+    expect(next.find((m) => m.stage === "bronze")?.bracket).toBe("A");
   });
 
-  it("QF4: D1 vs A2 (seed 4 vs seed 5)", () => {
-    expect(qfMatches[3].team1_id).toBe("D1");
-    expect(qfMatches[3].team2_id).toBe("A2");
-  });
-
-  it("after QF (all team1 win): SF pairings are QF1w vs QF4w and QF2w vs QF3w (cross-pair)", () => {
-    // entrants = [A1, B1, C1, D1] (winners in QF order), n=4
-    // cross-pair: entrant[0] vs entrant[3] = A1 vs D1
-    //             entrant[1] vs entrant[2] = B1 vs C1
-    const completed = qfMatches.map((m, i) => completeMatch(m, i));
-    const sfMatches = generateNextKORound(completed, [], courts, TOURNAMENT_ID, true);
-    const sfs = sfMatches.filter((m) => m.stage === "semi_final");
-
-    expect(sfs).toHaveLength(2);
-    expect(sfs[0].team1_id).toBe("A1");
-    expect(sfs[0].team2_id).toBe("D1");
-    expect(sfs[1].team1_id).toBe("B1");
-    expect(sfs[1].team2_id).toBe("C1");
-  });
-
-  it("full bracket QF → SF → Final: top two seeds (A1 vs B1) meet in Final", () => {
-    const completedQF = qfMatches.map((m, i) => completeMatch(m, i));
-    const sfMatches = generateNextKORound(completedQF, [], courts, TOURNAMENT_ID, true);
-    const sfs = sfMatches.filter((m) => m.stage === "semi_final");
-    const completedSF = sfs.map((m, i) => completeMatch(m, i));
-    const finals = generateNextKORound(completedSF, [], courts, TOURNAMENT_ID, true);
-    const final = finals.find((m) => m.stage === "final")!;
-    const bronze = finals.find((m) => m.stage === "bronze")!;
-
-    expect(final.team1_id).toBe("A1");
-    expect(final.team2_id).toBe("B1");
-    expect(bronze).toBeDefined();
+  it("bronze is generated PER bracket when has_bronze=true", () => {
+    const sfs = generateFirstKORound(groups, [], courts, TID, true);
+    const aCompleted = sfs
+      .filter((m) => m.bracket === "A")
+      .map((m, i) => completeMatch(m, i));
+    const bCompleted = sfs
+      .filter((m) => m.bracket === "B")
+      .map((m, i) => completeMatch(m, i + 100));
+    const aNext = generateNextKORound(aCompleted, [], courts, TID, true);
+    const bNext = generateNextKORound(bCompleted, [], courts, TID, true);
+    expect(aNext.some((m) => m.stage === "bronze" && m.bracket === "A")).toBe(true);
+    expect(bNext.some((m) => m.stage === "bronze" && m.bracket === "B")).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 5 – 4 groups × 1 advance  →  Semi-finals (4 teams, no byes)
+// Scenario 5 — 4 groups × 1 advance → single A-slutspel SF (4 teams)
 // ---------------------------------------------------------------------------
-describe("Scenario 5: 4 groups × 1 advance → SF (4 teams)", () => {
-  /**
-   * collectSeeds: rank-0 only = [A1, B1, C1, D1]
-   * SF1: A1 vs D1 (seed 1 vs seed 4)
-   * SF2: B1 vs C1 (seed 2 vs seed 3)
-   */
+describe("4 groups × 1 advance → A-slutspel SF (4 teams)", () => {
   const groups: GroupStanding[] = [
-    makeGroup("g-a", "Grupp A", 0, ["A1", "A2"]),
-    makeGroup("g-b", "Grupp B", 1, ["B1", "B2"]),
-    makeGroup("g-c", "Grupp C", 2, ["C1", "C2"]),
-    makeGroup("g-d", "Grupp D", 3, ["D1", "D2"]),
+    makeGroup("g-a", "Grupp A", ["A1"]),
+    makeGroup("g-b", "Grupp B", ["B1"]),
+    makeGroup("g-c", "Grupp C", ["C1"]),
+    makeGroup("g-d", "Grupp D", ["D1"]),
   ];
-  const advancing = groups.map((g) => ({ ...g, standings: g.standings.slice(0, 1) }));
   const courts = makeCourts(2);
 
-  it("generates 2 semi-final matches", () => {
-    const matches = generateFirstKORound(advancing, [], courts, TOURNAMENT_ID, false);
+  it("generates 2 semi-final matches in bracket A only", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
     expect(matches).toHaveLength(2);
     expect(matches.every((m) => m.stage === "semi_final")).toBe(true);
+    expect(matches.every((m) => m.bracket === "A")).toBe(true);
   });
 
-  it("SF1: A1 vs D1, SF2: B1 vs C1", () => {
-    const matches = generateFirstKORound(advancing, [], courts, TOURNAMENT_ID, false);
+  it("classic seeding: SF1 = A1 vs D1, SF2 = B1 vs C1", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
     expect(matches[0].team1_id).toBe("A1");
     expect(matches[0].team2_id).toBe("D1");
     expect(matches[1].team1_id).toBe("B1");
@@ -403,26 +301,129 @@ describe("Scenario 5: 4 groups × 1 advance → SF (4 teams)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 6 – Edge: 1 group × 2 advances  →  straight Final
+// Scenario 6 — 1 group × 2 advance → single-group fallback (A-slutspel Final)
 // ---------------------------------------------------------------------------
-describe("Scenario 6: 1 group × 2 advances → straight Final", () => {
+describe("1 group × 2 advance → single-group fallback", () => {
   const groups: GroupStanding[] = [
-    makeGroup("g-a", "Grupp A", 0, ["A1", "A2", "A3", "A4"]),
+    makeGroup("g-a", "Grupp A", ["A1", "A2", "A3", "A4"]),
   ];
+  // Only 2 advance
   const advancing = groups.map((g) => ({ ...g, standings: g.standings.slice(0, 2) }));
   const courts = makeCourts(1);
 
-  /**
-   * BUG: buildFinalMatches calls collectSeeds(groupStandings, 1) — hardcoded
-   * to 1 advance per group. With 1 group and 2 advancing, only A1 is collected
-   * (seeds.length = 1 < 2) and the function returns []. The advancesPerGroup
-   * argument should be derived from groupStandings[0].standings.length.
-   */
-  it("BUG – generates 1 final match: A1 vs A2 (currently returns empty)", () => {
-    const matches = generateFirstKORound(advancing, [], courts, TOURNAMENT_ID, false);
+  it("generates a single Final A1 vs A2 in bracket A", () => {
+    const matches = generateFirstKORound(advancing, [], courts, TID, false);
     expect(matches).toHaveLength(1);
     expect(matches[0].stage).toBe("final");
+    expect(matches[0].bracket).toBe("A");
     expect(matches[0].team1_id).toBe("A1");
     expect(matches[0].team2_id).toBe("A2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3 groups × 2 advance → A-slutspel + B-slutspel, each with 3-team play-in
+// ---------------------------------------------------------------------------
+describe("3 groups × 2 advance → 2 brackets, each 3-team SF with bye", () => {
+  const groups: GroupStanding[] = [
+    makeGroup("g-a", "Grupp A", ["A1", "A2"]),
+    makeGroup("g-b", "Grupp B", ["B1", "B2"]),
+    makeGroup("g-c", "Grupp C", ["C1", "C2"]),
+  ];
+  const courts = makeCourts(2);
+
+  it("each bracket has exactly 1 play-in match (top seed gets bye)", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    expect(matches.filter((m) => m.bracket === "A")).toHaveLength(1);
+    expect(matches.filter((m) => m.bracket === "B")).toHaveLength(1);
+  });
+
+  it("A-slutspel play-in is B1 vs C1 (A1 byes)", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    const a = matches.find((m) => m.bracket === "A")!;
+    expect(a.team1_id).toBe("B1");
+    expect(a.team2_id).toBe("C1");
+  });
+
+  it("B-slutspel play-in is B2 vs C2 (A2 byes)", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    const b = matches.find((m) => m.bracket === "B")!;
+    expect(b.team1_id).toBe("B2");
+    expect(b.team2_id).toBe("C2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5 groups × 1 advance → A-slutspel only, 5 teams → 1 QF + SF + Final
+// ---------------------------------------------------------------------------
+describe("5 groups × 1 advance → A-slutspel QF play-in", () => {
+  const groups: GroupStanding[] = Array.from({ length: 5 }, (_, i) =>
+    makeGroup(`g-${i}`, `Grupp ${i}`, [`G${i}T0`])
+  );
+  const courts = makeCourts(2);
+
+  it("first round has exactly 1 QF play-in match in bracket A", () => {
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].stage).toBe("quarter_final");
+    expect(matches[0].bracket).toBe("A");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generateNextKORound — bracket inheritance
+// ---------------------------------------------------------------------------
+describe("generateNextKORound preserves bracket from completed matches", () => {
+  it("matches inherit the bracket of the first completed match", () => {
+    const fakeCompleted: TournamentMatch[] = [
+      {
+        id: "x1",
+        created_at: new Date().toISOString(),
+        tournament_id: TID,
+        group_id: null,
+        round_number: 1,
+        court_id: "c1",
+        team1_id: "T1",
+        team2_id: "T2",
+        score_team1: 7,
+        score_team2: 6,
+        status: "completed",
+        stage: "semi_final",
+        bracket: "B",
+      },
+      {
+        id: "x2",
+        created_at: new Date().toISOString(),
+        tournament_id: TID,
+        group_id: null,
+        round_number: 1,
+        court_id: "c2",
+        team1_id: "T3",
+        team2_id: "T4",
+        score_team1: 7,
+        score_team2: 6,
+        status: "completed",
+        stage: "semi_final",
+        bracket: "B",
+      },
+    ];
+    const next = generateNextKORound(fakeCompleted, [], makeCourts(2), TID, false);
+    expect(next).toHaveLength(1);
+    expect(next[0].stage).toBe("final");
+    expect(next[0].bracket).toBe("B");
+  });
+});
+
+describe("firstKOStage", () => {
+  it.each([
+    [1, "final"],
+    [2, "final"],
+    [3, "semi_final"],
+    [4, "semi_final"],
+    [5, "quarter_final"],
+    [8, "quarter_final"],
+    [16, "quarter_final"],
+  ])("firstKOStage(%i) = %s", (n, expected) => {
+    expect(firstKOStage(n)).toBe(expected);
   });
 });

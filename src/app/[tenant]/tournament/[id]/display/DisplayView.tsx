@@ -25,6 +25,7 @@ import {
   groupBadgeOrNull,
   groupPaletteFor,
 } from "@/lib/group-colors";
+import { bracketLabel } from "@/lib/algorithms/knockout";
 
 type Loaded = {
   tournament: Tournament;
@@ -571,7 +572,6 @@ function koStageColor(stage: string, accent: string): string {
 
 function KOView({
   koMatches,
-  activeKOStage,
   courts,
   byCourt,
   nextByCourt,
@@ -583,6 +583,8 @@ function KOView({
   accent,
 }: {
   koMatches: TournamentMatch[];
+  // Kept for back-compat; in multi-bracket mode each bracket section labels its
+  // own running stage so the parent doesn't need to know the global one.
   activeKOStage: string | null;
   courts: Court[];
   byCourt: Map<string, TournamentMatch>;
@@ -601,29 +603,24 @@ function KOView({
 
   const displayCourts = koCourts.length > 0 ? koCourts : courts;
 
-  // Group active courts by their current match's stage for simultaneous QF+SF display.
-  const stageGroups = useMemo(() => {
-    return KO_STAGE_ORDER
-      .map((stage) => ({
-        stage,
-        courts: displayCourts.filter((c) => byCourt.get(c.id)?.stage === stage),
-        color: koStageColor(stage, accent),
-      }))
-      .filter((g) => g.courts.length > 0);
-  }, [displayCourts, byCourt, accent]);
+  // Split active courts by bracket. Each bracket renders as its own column on
+  // the TV when multiple slutspel run in parallel.
+  const bracketGroups = useMemo(() => {
+    const map = new Map<string, Court[]>();
+    for (const c of displayCourts) {
+      const m = byCourt.get(c.id);
+      const b = m?.bracket ?? "A";
+      const arr = map.get(b) ?? [];
+      arr.push(c);
+      map.set(b, arr);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [displayCourts, byCourt]);
 
-  const hasMultipleStages = stageGroups.length > 1;
-
-  // All active stages for the header label
-  const activeStages = useMemo(
-    () => [...new Set(koMatches.filter((m) => m.status !== "completed" && m.stage !== "bronze").map((m) => m.stage))],
-    [koMatches]
-  );
-  const activeBronze = koMatches.some((m) => m.stage === "bronze" && m.status !== "completed");
+  const hasMultipleBrackets = bracketGroups.length > 1;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-[1vh]">
-      {/* Stage header row */}
       <div className="flex items-center gap-[1vw] flex-wrap">
         <span
           className="font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500"
@@ -631,68 +628,121 @@ function KOView({
         >
           Slutspel
         </span>
-        {activeStages.map((stage) => (
-          <span
-            key={stage}
-            className="font-black uppercase tracking-widest px-[1vw] py-[0.35vh] rounded-full text-white"
-            style={{ backgroundColor: koStageColor(stage, accent), fontSize: "clamp(0.7rem, 1.1vw, 1.4rem)" }}
-          >
-            {KO_STAGE_LABELS[stage] ?? stage}
-          </span>
-        ))}
-        {activeBronze && (
-          <span
-            className="font-black uppercase tracking-widest px-[1vw] py-[0.35vh] rounded-full text-white"
-            style={{ backgroundColor: "#b45309", fontSize: "clamp(0.7rem, 1.1vw, 1.4rem)" }}
-          >
-            Bronsmatch
-          </span>
-        )}
       </div>
 
-      {/* Courts — split into labeled sections when multiple stages run simultaneously */}
-      <div className={`flex-1 min-h-0 ${hasMultipleStages ? "flex gap-[2vw]" : ""}`}>
-        {hasMultipleStages ? (
-          stageGroups.map(({ stage, courts: stageCourts, color }) => (
-            <div key={stage} className="flex-1 min-h-0 flex flex-col gap-[0.6vh]">
-              <div className="flex items-center gap-[0.6vw]">
-                <div className="h-[2px] w-[1vw] rounded" style={{ backgroundColor: color }} />
-                <span
-                  className="font-black uppercase tracking-widest text-white px-[0.8vw] py-[0.25vh] rounded-full"
-                  style={{ backgroundColor: color, fontSize: "clamp(0.55rem, 0.85vw, 1rem)" }}
-                >
-                  {KO_STAGE_LABELS[stage] ?? stage}
-                </span>
-                <div className="h-[2px] flex-1 rounded" style={{ backgroundColor: color }} />
-              </div>
-              <div className="flex-1 min-h-0">
-                <MatchesView
-                  courts={stageCourts}
-                  byCourt={byCourt}
-                  nextByCourt={nextByCourt}
-                  lockedByCourt={lockedByCourt}
-                  teamMap={teamMap}
-                  groupMap={groupMap}
-                  groupIndexMap={groupIndexMap}
-                  playerMap={playerMap}
-                  accent={accent}
-                />
+      <div className={`flex-1 min-h-0 ${hasMultipleBrackets ? "flex gap-[2vw]" : ""}`}>
+        {bracketGroups.map(([bracket, bracketCourts]) => {
+          const stageGroups = KO_STAGE_ORDER
+            .map((stage) => ({
+              stage,
+              courts: bracketCourts.filter((c) => byCourt.get(c.id)?.stage === stage),
+              color: koStageColor(stage, accent),
+            }))
+            .filter((g) => g.courts.length > 0);
+          const hasMultipleStages = stageGroups.length > 1;
+
+          return (
+            <div
+              key={bracket}
+              className="flex-1 min-h-0 flex flex-col gap-[0.8vh]"
+            >
+              {hasMultipleBrackets && (
+                <div className="flex items-center gap-[0.6vw]">
+                  <span
+                    className="font-black uppercase tracking-widest text-white rounded-full"
+                    style={{
+                      backgroundColor: accent,
+                      fontSize: "clamp(0.65rem, 1vw, 1.2rem)",
+                      padding: "clamp(0.25rem, 0.4vh, 0.5rem) clamp(0.6rem, 1vw, 1.2rem)",
+                    }}
+                  >
+                    {bracketLabel(bracket)}
+                  </span>
+                </div>
+              )}
+              <div
+                className={`flex-1 min-h-0 ${hasMultipleStages ? "flex gap-[1vw]" : ""}`}
+              >
+                {hasMultipleStages ? (
+                  stageGroups.map(({ stage, courts: stageCourts, color }) => (
+                    <div
+                      key={stage}
+                      className="flex-1 min-h-0 flex flex-col gap-[0.5vh]"
+                    >
+                      <div className="flex items-center gap-[0.6vw]">
+                        <div
+                          className="h-[2px] w-[1vw] rounded"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span
+                          className="font-black uppercase tracking-widest text-white px-[0.8vw] py-[0.25vh] rounded-full"
+                          style={{
+                            backgroundColor: color,
+                            fontSize: "clamp(0.55rem, 0.85vw, 1rem)",
+                          }}
+                        >
+                          {KO_STAGE_LABELS[stage] ?? stage}
+                        </span>
+                        <div
+                          className="h-[2px] flex-1 rounded"
+                          style={{ backgroundColor: color }}
+                        />
+                      </div>
+                      <div className="flex-1 min-h-0">
+                        <MatchesView
+                          courts={stageCourts}
+                          byCourt={byCourt}
+                          nextByCourt={nextByCourt}
+                          lockedByCourt={lockedByCourt}
+                          teamMap={teamMap}
+                          groupMap={groupMap}
+                          groupIndexMap={groupIndexMap}
+                          playerMap={playerMap}
+                          accent={accent}
+                        />
+                      </div>
+                    </div>
+                  ))
+                ) : stageGroups.length === 1 ? (
+                  <div className="flex-1 min-h-0 flex flex-col gap-[0.5vh]">
+                    <div className="flex items-center gap-[0.6vw]">
+                      <div
+                        className="h-[2px] w-[1vw] rounded"
+                        style={{ backgroundColor: stageGroups[0].color }}
+                      />
+                      <span
+                        className="font-black uppercase tracking-widest text-white px-[0.8vw] py-[0.25vh] rounded-full"
+                        style={{
+                          backgroundColor: stageGroups[0].color,
+                          fontSize: "clamp(0.55rem, 0.85vw, 1rem)",
+                        }}
+                      >
+                        {KO_STAGE_LABELS[stageGroups[0].stage] ?? stageGroups[0].stage}
+                      </span>
+                      <div
+                        className="h-[2px] flex-1 rounded"
+                        style={{ backgroundColor: stageGroups[0].color }}
+                      />
+                    </div>
+                    <div className="flex-1 min-h-0">
+                      <MatchesView
+                        courts={stageGroups[0].courts}
+                        byCourt={byCourt}
+                        nextByCourt={nextByCourt}
+                        lockedByCourt={lockedByCourt}
+                        teamMap={teamMap}
+                        groupMap={groupMap}
+                        groupIndexMap={groupIndexMap}
+                        playerMap={playerMap}
+                        accent={accent}
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
-          ))
-        ) : (
-          <MatchesView
-            courts={displayCourts}
-            byCourt={byCourt}
-            nextByCourt={nextByCourt}
-            lockedByCourt={lockedByCourt}
-            teamMap={teamMap}
-            groupMap={groupMap}
-            groupIndexMap={groupIndexMap}
-            playerMap={playerMap}
-            accent={accent}
-          />
-        )}
+          );
+        })}
       </div>
     </div>
   );

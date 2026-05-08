@@ -148,6 +148,7 @@ export function generateGroupMatches(
           score_team2: null,
           status: "scheduled",
           stage: "group",
+          bracket: null,
         });
       }
     }

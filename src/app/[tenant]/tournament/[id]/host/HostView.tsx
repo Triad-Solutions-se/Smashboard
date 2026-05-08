@@ -25,7 +25,8 @@ import {
 import {
   generateFirstKORound,
   generateNextKORound,
-  byeCount,
+  bracketLabel,
+  bracketLetter,
   type GroupStanding,
 } from "@/lib/algorithms/knockout";
 import type { RoundRest } from "@/lib/supabase/types";
@@ -396,69 +397,10 @@ function HostInner({
     ).length;
   }, [matches, currentRound]);
 
-  // Only courts that this tournament actually uses, sorted by group of first match.
-  const tournamentCourts = useMemo(() => {
-    const used = courts.filter((c) => matches.some((m) => m.court_id === c.id));
-    return used.sort((a, b) => {
-      const ma = matches.find((m) => m.court_id === a.id);
-      const mb = matches.find((m) => m.court_id === b.id);
-      const ga = ma?.group_id ? groupIndexMap.get(ma.group_id) ?? 9999 : 9999;
-      const gb = mb?.group_id ? groupIndexMap.get(mb.group_id) ?? 9999 : 9999;
-      if (ga !== gb) return ga - gb;
-      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
-    });
-  }, [courts, matches, groupIndexMap]);
-
-  // Sort tournamentCourts so matches in the same group sit next to each other for the
-  // current round (idle courts during group phase still appear in tournament-court order).
-  const sortedCourts = useMemo(() => {
-    const decorated = tournamentCourts.map((c, idx) => ({ court: c, idx }));
-    decorated.sort((a, b) => {
-      const ma = matchByCourt.get(a.court.id);
-      const mb = matchByCourt.get(b.court.id);
-      if (!ma && !mb) return a.idx - b.idx;
-      if (!ma) return 1;
-      if (!mb) return -1;
-      const ga = ma.group_id ? groupIndexMap.get(ma.group_id) ?? 9999 : 9999;
-      const gb = mb.group_id ? groupIndexMap.get(mb.group_id) ?? 9999 : 9999;
-      if (ga !== gb) return ga - gb;
-      return a.idx - b.idx;
-    });
-    return decorated.map((d) => d.court);
-  }, [tournamentCourts, matchByCourt, groupIndexMap]);
-
   // --- Playoff derived state ---
   const groupMatches = useMemo(() => matches.filter((m) => m.stage === "group"), [matches]);
   const koMatches = useMemo(() => matches.filter((m) => m.stage !== "group"), [matches]);
   const allGroupDone = groupMatches.length > 0 && groupMatches.every((m) => m.status === "completed");
-
-  // For each court's upcoming match, collect any teams that are still finishing
-  // an earlier-round match on a different court. A match is only unblocked once
-  // all of its players' prior matches have been scored.
-  const blockedBy = useMemo(() => {
-    const map = new Map<string, TournamentTeam[]>();
-    const isKOPhase = koMatches.some((m) => m.status !== "completed");
-    if (isKOPhase) return map;
-    for (const [courtId, m] of matchByCourt.entries()) {
-      const blocking: TournamentTeam[] = [];
-      for (const teamId of [m.team1_id, m.team2_id]) {
-        const hasEarlierUnfinished = matches.some(
-          (other) =>
-            other.court_id !== courtId &&
-            other.stage === "group" &&
-            other.status !== "completed" &&
-            (other.team1_id === teamId || other.team2_id === teamId) &&
-            other.round_number < m.round_number
-        );
-        if (hasEarlierUnfinished) {
-          const t = teamMap.get(teamId);
-          if (t) blocking.push(t);
-        }
-      }
-      if (blocking.length > 0) map.set(courtId, blocking);
-    }
-    return map;
-  }, [matchByCourt, matches, koMatches, teamMap]);
   const hasKO = koMatches.length > 0;
   const advancesPerGroup = tournament.advances_per_group ?? 0;
 
@@ -474,61 +416,55 @@ function HostInner({
     return "done";
   }, [allGroupDone, hasKO, advancesPerGroup, koMatches]);
 
-  // Within ko_active: find the current incomplete KO stage (ignoring bronze)
-  const activeKOStage = useMemo(() => {
-    const incomplete = koMatches.filter((m) => m.status !== "completed" && m.stage !== "bronze");
-    if (incomplete.length > 0) return incomplete[0].stage;
-    return null;
-  }, [koMatches]);
-
-  // Progress per KO stage — used in header and court grouping.
-  const koStageProgress = useMemo(() => {
+  // KO progress aggregated per bracket (A/B/C…). Used both in the header
+  // status chips and inside each bracket section card.
+  type BracketProgress = {
+    bracket: string;
+    completed: number;
+    total: number;
+    runningStage: MatchStage | null;
+  };
+  const koBracketProgress = useMemo<BracketProgress[]>(() => {
     if (!hasKO) return [];
-    const stages: MatchStage[] = ["quarter_final", "semi_final", "final"];
-    if (koMatches.some((m) => m.stage === "bronze")) stages.push("bronze");
-    return stages
-      .map((stage) => {
-        const sm = koMatches.filter((m) => m.stage === stage);
-        if (sm.length === 0) return null;
-        return { stage, completed: sm.filter((m) => m.status === "completed").length, total: sm.length };
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
+    const map = new Map<string, BracketProgress>();
+    const stageOrder: MatchStage[] = ["quarter_final", "semi_final", "final"];
+    for (const m of koMatches) {
+      const b = m.bracket ?? "A";
+      let e = map.get(b);
+      if (!e) {
+        e = { bracket: b, completed: 0, total: 0, runningStage: null };
+        map.set(b, e);
+      }
+      e.total++;
+      if (m.status === "completed") e.completed++;
+      else if (m.stage !== "bronze") {
+        if (
+          e.runningStage === null ||
+          stageOrder.indexOf(m.stage) < stageOrder.indexOf(e.runningStage)
+        ) {
+          e.runningStage = m.stage;
+        }
+      }
+    }
+    return [...map.values()].sort((a, b) => a.bracket.localeCompare(b.bracket));
   }, [hasKO, koMatches]);
 
-  // All distinct KO stages currently running (incomplete, non-bronze).
-  const runningKOStages = useMemo(
-    () => [...new Set(koMatches.filter((m) => m.status !== "completed" && m.stage !== "bronze").map((m) => m.stage))],
-    [koMatches]
-  );
-
-  // Round-number based: the most recently completed non-bronze KO round.
-  // Stage labels can repeat across rounds (e.g. play-in QF then real QF for
-  // 9+ team brackets), so we key by round_number, not stage.
-  const lastCompletedKORound = useMemo(() => {
-    const complete = koMatches.filter((m) => m.status === "completed" && m.stage !== "bronze");
-    if (complete.length === 0) return null;
-    return Math.max(...complete.map((m) => m.round_number));
+  // Group KO matches by bracket for rendering.
+  const koByBracket = useMemo(() => {
+    const map = new Map<string, TournamentMatch[]>();
+    for (const m of koMatches) {
+      const b = m.bracket ?? "A";
+      const arr = map.get(b) ?? [];
+      arr.push(m);
+      map.set(b, arr);
+    }
+    return map;
   }, [koMatches]);
 
-  // Bye teams for the next KO round: advancing teams that haven't yet played
-  // any KO match. Includes top seeds that skipped the first KO round and
-  // any subsequent-round byes (rare but possible with odd brackets).
-  const byeTeamIdsForNextRound = useMemo(() => {
-    if (advancesPerGroup === 0) return [];
-    const advancingIds = new Set<string>();
-    for (const g of groups) {
-      const groupTeams = teams.filter((t) => t.group_id === g.id);
-      const groupMatchesForGroup = groupMatches.filter((m) => m.group_id === g.id);
-      const standings = computeStandings(groupTeams, groupMatchesForGroup, playerMap).slice(0, advancesPerGroup);
-      for (const s of standings) advancingIds.add(s.team_id);
-    }
-    const playedInKO = new Set<string>();
-    for (const m of koMatches) {
-      playedInKO.add(m.team1_id);
-      playedInKO.add(m.team2_id);
-    }
-    return [...advancingIds].filter((id) => !playedInKO.has(id));
-  }, [groups, teams, groupMatches, playerMap, advancesPerGroup, koMatches]);
+  const sortedBrackets = useMemo(
+    () => [...koByBracket.keys()].sort(),
+    [koByBracket]
+  );
 
   // Group standings for playoff panel
   const groupStandings = useMemo((): GroupStanding[] => {
@@ -579,7 +515,9 @@ function HostInner({
   }
 
   // Automatically generates the next KO round's match for each completed pair
-  // of feeder matches, enabling QF and SF to run simultaneously.
+  // of feeder matches, enabling QF and SF to run simultaneously. Multi-bracket:
+  // KO matches are partitioned by `bracket` (A/B/C…) and each bracket advances
+  // independently with its own external-bye set.
   async function autoAdvanceKO(loaded: Loaded): Promise<boolean> {
     const { tournament: t, courts: c, matches: allMatches, groups: g, teams: tm } = loaded;
     const koAll = allMatches.filter((m) => m.stage !== "group");
@@ -590,102 +528,176 @@ function HostInner({
     );
     if (completedNonBronze.length === 0) return false;
 
-    // Compute external bye teams (advancing teams that haven't played KO yet).
     const apg = t.advances_per_group ?? 0;
-    const externalByeIds: string[] = [];
+    const gMatches = allMatches.filter((m) => m.stage === "group");
+    const pm = new Map<string, Player>();
+    for (const p of loaded.players) pm.set(p.id, p);
+
+    // Per-group advancing teams, ranked. Used to compute external byes per
+    // bracket (rank N team from each group → bracket N+1 letter).
+    const groupAdvancing: { groupId: string; advancing: string[] }[] = [];
     if (apg > 0) {
-      const gMatches = allMatches.filter((m) => m.stage === "group");
-      const pm = new Map<string, Player>();
-      for (const p of loaded.players) pm.set(p.id, p);
-      const advancingIds = new Set<string>();
       for (const grp of g) {
         const gTeams = tm.filter((tt) => tt.group_id === grp.id);
         const gM = gMatches.filter((m) => m.group_id === grp.id);
         const standings = computeStandings(gTeams, gM, pm).slice(0, apg);
-        for (const s of standings) advancingIds.add(s.team_id);
+        groupAdvancing.push({
+          groupId: grp.id,
+          advancing: standings.map((s) => s.team_id),
+        });
       }
-      const playedInKO = new Set<string>(koAll.flatMap((m) => [m.team1_id, m.team2_id]));
-      externalByeIds.push(...[...advancingIds].filter((id) => !playedInKO.has(id)));
+    }
+    const isSingleGroup = g.length <= 1;
+
+    function externalByesFor(bracket: string, bracketMatches: TournamentMatch[]): string[] {
+      const advancingIds = new Set<string>();
+      if (isSingleGroup) {
+        if (bracket === "A") {
+          for (const ga of groupAdvancing) for (const id of ga.advancing) advancingIds.add(id);
+        }
+      } else {
+        const rank = bracket.charCodeAt(0) - "A".charCodeAt(0);
+        for (const ga of groupAdvancing) {
+          if (rank >= 0 && rank < ga.advancing.length) advancingIds.add(ga.advancing[rank]);
+        }
+      }
+      const playedInKO = new Set<string>(
+        bracketMatches.flatMap((m) => [m.team1_id, m.team2_id])
+      );
+      return [...advancingIds].filter((id) => !playedInKO.has(id));
     }
 
-    const allKORounds = [
-      ...new Set(koAll.filter((m) => m.stage !== "bronze").map((m) => m.round_number)),
-    ].sort((a, b) => a - b);
-    const firstKORound = allKORounds[0] ?? 1;
+    // Partition matches by bracket. Legacy rows with bracket=NULL are treated
+    // as bracket "A" so existing tournaments keep working.
+    const byBracket = new Map<string, TournamentMatch[]>();
+    for (const m of koAll) {
+      const b = m.bracket ?? "A";
+      const arr = byBracket.get(b) ?? [];
+      arr.push(m);
+      byBracket.set(b, arr);
+    }
 
     let generated = false;
 
-    for (const roundNum of allKORounds) {
-      const roundMatches = koAll
-        .filter((m) => m.round_number === roundNum && m.stage !== "bronze")
-        .sort((a, b) => {
-          const dt = a.created_at.localeCompare(b.created_at);
-          return dt !== 0 ? dt : a.id.localeCompare(b.id);
-        });
-      const nextRound = roundNum + 1;
-      const nextRoundMatches = koAll.filter(
-        (m) => m.round_number === nextRound && m.stage !== "bronze"
-      );
+    for (const [bracket, bracketMatches] of byBracket) {
+      const externalByeIds = externalByesFor(bracket, bracketMatches);
+      const allKORounds = [
+        ...new Set(
+          bracketMatches.filter((m) => m.stage !== "bronze").map((m) => m.round_number)
+        ),
+      ].sort((a, b) => a - b);
+      const firstKORound = allKORounds[0] ?? 1;
 
-      const relevantByeIds = roundNum === firstKORound ? externalByeIds : [];
-      const n = roundMatches.length;
-
-      if (relevantByeIds.length > 0) {
-        // Has external byes: require all matches in round to finish, then generate all.
-        if (!roundMatches.every((m) => m.status === "completed")) continue;
-        if (nextRoundMatches.length > 0) continue;
-        const next = generateNextKORound(roundMatches as TournamentMatch[], relevantByeIds, c, t.id, t.has_bronze);
-        if (next.length > 0) { await insertMatches(next); generated = true; }
-        continue;
-      }
-
-      // No external byes: generate pair by pair as soon as both feeders complete.
-      const newMatches: Omit<TournamentMatch, "id" | "created_at">[] = [];
-      for (let i = 0; i < Math.floor(n / 2); i++) {
-        const m1 = roundMatches[i];
-        const m2 = roundMatches[n - 1 - i];
-        if (m1.status !== "completed" || m2.status !== "completed") continue;
-
-        const w1 = (m1.score_team1 ?? 0) > (m1.score_team2 ?? 0) ? m1.team1_id : m1.team2_id;
-        const w2 = (m2.score_team1 ?? 0) > (m2.score_team2 ?? 0) ? m2.team1_id : m2.team2_id;
-
-        const alreadyExists =
-          nextRoundMatches.some(
-            (m) => (m.team1_id === w1 && m.team2_id === w2) || (m.team1_id === w2 && m.team2_id === w1)
-          ) ||
-          newMatches.some(
-            (m) => (m.team1_id === w1 && m.team2_id === w2) || (m.team1_id === w2 && m.team2_id === w1)
-          );
-        if (alreadyExists) continue;
-
-        const nextTotal = Math.floor(n / 2);
-        const stage: MatchStage = nextTotal === 1 ? "final" : nextTotal <= 2 ? "semi_final" : "quarter_final";
-        const court = c.find((cc) => cc.id === m1.court_id) ?? c[i % c.length] ?? null;
-
-        newMatches.push({
-          tournament_id: t.id, group_id: null, round_number: nextRound,
-          court_id: court?.id ?? null, team1_id: w1, team2_id: w2,
-          score_team1: null, score_team2: null, status: "scheduled", stage,
-        });
-
-        if (t.has_bronze && stage === "final" && n === 2) {
-          const l1 = (m1.score_team1 ?? 0) > (m1.score_team2 ?? 0) ? m1.team2_id : m1.team1_id;
-          const l2 = (m2.score_team1 ?? 0) > (m2.score_team2 ?? 0) ? m2.team2_id : m2.team1_id;
-          const bronzeCourt = c.find((cc) => cc.id === m2.court_id) ?? c[Math.floor(c.length / 2)] ?? c[0] ?? null;
-          newMatches.push({
-            tournament_id: t.id, group_id: null, round_number: nextRound,
-            court_id: bronzeCourt?.id ?? null, team1_id: l1, team2_id: l2,
-            score_team1: null, score_team2: null, status: "scheduled", stage: "bronze",
+      for (const roundNum of allKORounds) {
+        const roundMatches = bracketMatches
+          .filter((m) => m.round_number === roundNum && m.stage !== "bronze")
+          .sort((a, b) => {
+            const dt = a.created_at.localeCompare(b.created_at);
+            return dt !== 0 ? dt : a.id.localeCompare(b.id);
           });
+        const nextRound = roundNum + 1;
+        const nextRoundMatches = bracketMatches.filter(
+          (m) => m.round_number === nextRound && m.stage !== "bronze"
+        );
+
+        const relevantByeIds = roundNum === firstKORound ? externalByeIds : [];
+        const n = roundMatches.length;
+
+        if (relevantByeIds.length > 0) {
+          if (!roundMatches.every((m) => m.status === "completed")) continue;
+          if (nextRoundMatches.length > 0) continue;
+          const next = generateNextKORound(
+            roundMatches,
+            relevantByeIds,
+            c,
+            t.id,
+            t.has_bronze
+          );
+          if (next.length > 0) {
+            await insertMatches(next);
+            generated = true;
+          }
+          continue;
+        }
+
+        // No external byes: generate pair by pair as feeders complete.
+        const newMatches: Omit<TournamentMatch, "id" | "created_at">[] = [];
+        for (let i = 0; i < Math.floor(n / 2); i++) {
+          const m1 = roundMatches[i];
+          const m2 = roundMatches[n - 1 - i];
+          if (m1.status !== "completed" || m2.status !== "completed") continue;
+
+          const w1 = (m1.score_team1 ?? 0) > (m1.score_team2 ?? 0) ? m1.team1_id : m1.team2_id;
+          const w2 = (m2.score_team1 ?? 0) > (m2.score_team2 ?? 0) ? m2.team1_id : m2.team2_id;
+
+          const alreadyExists =
+            nextRoundMatches.some(
+              (m) =>
+                (m.team1_id === w1 && m.team2_id === w2) ||
+                (m.team1_id === w2 && m.team2_id === w1)
+            ) ||
+            newMatches.some(
+              (m) =>
+                (m.team1_id === w1 && m.team2_id === w2) ||
+                (m.team1_id === w2 && m.team2_id === w1)
+            );
+          if (alreadyExists) continue;
+
+          const nextTotal = Math.floor(n / 2);
+          const stage: MatchStage =
+            nextTotal === 1 ? "final" : nextTotal <= 2 ? "semi_final" : "quarter_final";
+          const court = c.find((cc) => cc.id === m1.court_id) ?? c[i % Math.max(1, c.length)] ?? null;
+
+          newMatches.push({
+            tournament_id: t.id,
+            group_id: null,
+            round_number: nextRound,
+            court_id: court?.id ?? null,
+            team1_id: w1,
+            team2_id: w2,
+            score_team1: null,
+            score_team2: null,
+            status: "scheduled",
+            stage,
+            bracket,
+          });
+
+          if (t.has_bronze && stage === "final" && n === 2) {
+            const l1 = (m1.score_team1 ?? 0) > (m1.score_team2 ?? 0) ? m1.team2_id : m1.team1_id;
+            const l2 = (m2.score_team1 ?? 0) > (m2.score_team2 ?? 0) ? m2.team2_id : m2.team1_id;
+            const bronzeCourt =
+              c.find((cc) => cc.id === m2.court_id) ?? c[Math.floor(c.length / 2)] ?? c[0] ?? null;
+            newMatches.push({
+              tournament_id: t.id,
+              group_id: null,
+              round_number: nextRound,
+              court_id: bronzeCourt?.id ?? null,
+              team1_id: l1,
+              team2_id: l2,
+              score_team1: null,
+              score_team2: null,
+              status: "scheduled",
+              stage: "bronze",
+              bracket,
+            });
+          }
+        }
+        if (newMatches.length > 0) {
+          await insertMatches(newMatches);
+          generated = true;
         }
       }
-      if (newMatches.length > 0) { await insertMatches(newMatches); generated = true; }
     }
     return generated;
   }
 
   const [completing, setCompleting] = useState(false);
   const [completeErr, setCompleteErr] = useState<string | null>(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const unpaidCount = useMemo(
+    () => paymentRows.filter((r) => !r.paid).length,
+    [paymentRows]
+  );
 
   async function handleComplete(): Promise<void> {
     if (!confirm("Avsluta sessionen? Alla matcher är klara och sessionen flyttas till Avslutade.")) return;
@@ -731,12 +743,22 @@ function HostInner({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {(tournamentPhase === "ko_active" || tournamentPhase === "done") && koStageProgress.length > 0 ? (
-            koStageProgress.map(({ stage, completed, total }) => (
-              <div key={stage} className="px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-                <div className="text-[10px] uppercase tracking-wide leading-none mb-0.5 font-semibold"
-                  style={{ color: koStageBadgeColor(stage) }}>
-                  {KO_STAGE_LABEL[stage] ?? stage}
+          {(tournamentPhase === "ko_active" || tournamentPhase === "done") && koBracketProgress.length > 0 ? (
+            koBracketProgress.map(({ bracket, completed, total, runningStage }) => (
+              <div
+                key={bracket}
+                className="px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"
+              >
+                <div
+                  className="text-[10px] uppercase tracking-wide leading-none mb-0.5 font-semibold"
+                  style={{ color: koStageBadgeColor(runningStage ?? "final") }}
+                >
+                  {bracketLabel(bracket)}
+                  {runningStage && (
+                    <span className="text-zinc-400 font-normal ml-1">
+                      · {KO_STAGE_LABEL[runningStage] ?? runningStage}
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm font-semibold tabular-nums leading-tight">
                   {completed}
@@ -771,6 +793,27 @@ function HostInner({
               <span className="text-zinc-400 font-normal">/{totalMatches}</span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setPaymentOpen(true)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="w-4 h-4 text-zinc-500"
+              aria-hidden
+            >
+              <path d="M2 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1H2V5Zm0 4h16v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9Zm3 3a1 1 0 1 0 0 2h2a1 1 0 1 0 0-2H5Z" />
+            </svg>
+            Betalning
+            {unpaidCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-bold tabular-nums">
+                {unpaidCount}
+              </span>
+            )}
+          </button>
           <Link
             href={`/${tenant.slug}/tournament/${tournament.id}/display`}
             target="_blank"
@@ -841,218 +884,120 @@ function HostInner({
         <PlayoffPanel
           tournament={tournament}
           groupStandings={groupStandings}
-          koMatches={koMatches}
           courts={courts}
           accent={accent}
-          lastCompletedKORound={lastCompletedKORound}
-          byeTeamIds={byeTeamIdsForNextRound}
           teamMap={teamMap}
           playerMap={playerMap}
           onGenerated={reload}
         />
       )}
 
-      <main className="px-5 py-4 grid lg:grid-cols-[1fr_300px] gap-5">
-        <section className="min-w-0">
-          {!hasKO ? (
-            <>
-              {restingTeamIdsThisRound.length > 0 && (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {restingTeamIdsThisRound.map((tid) => {
-                    const t = teamMap.get(tid);
-                    if (!t) return null;
-                    const name = shortTeamName(t, playerMap);
-                    return (
-                      <div
-                        key={tid}
-                        title={`Vilar: ${name}`}
-                        className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 max-w-[14rem] truncate cursor-default"
-                      >
-                        Vilar: {name}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {groups.length === 0 ? (
-                <div className="text-sm text-zinc-500">Inga grupper.</div>
-              ) : (
-                <div
-                  className="grid gap-3 items-start overflow-x-auto"
-                  style={{
-                    gridTemplateColumns: `repeat(${groups.length}, minmax(280px, 1fr))`,
-                  }}
-                >
-                  {groups.map((g, gi) => (
-                    <GroupColumn
-                      key={g.id}
-                      group={g}
-                      paletteIndex={gi}
-                      groupTeams={teams.filter((t) => t.group_id === g.id)}
-                      groupMatches={matches.filter(
-                        (m) => m.stage === "group" && m.group_id === g.id
-                      )}
-                      playerMap={playerMap}
-                      teamMap={teamMap}
-                      courtMap={courtMap}
-                      matchUiStates={matchUiStates}
-                      advancesPerGroup={advancesPerGroup}
-                      gamesPerMatch={tournament.games_per_match}
-                      onSave={saveScore}
-                      busyId={busy}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex items-center justify-between mb-2 gap-3">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                  Aktiva matcher
-                </h2>
-                {runningKOStages.length > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    {runningKOStages.map((stage) => (
-                      <span
-                        key={stage}
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold text-white"
-                        style={{ backgroundColor: koStageBadgeColor(stage) }}
-                      >
-                        {KO_STAGE_LABEL[stage] ?? stage}
-                      </span>
-                    ))}
-                  </div>
-                )}
+      <main className="px-5 py-4">
+        {!hasKO ? (
+          <>
+            {restingTeamIdsThisRound.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {restingTeamIdsThisRound.map((tid) => {
+                  const t = teamMap.get(tid);
+                  if (!t) return null;
+                  const name = shortTeamName(t, playerMap);
+                  return (
+                    <div
+                      key={tid}
+                      title={`Vilar: ${name}`}
+                      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 max-w-[14rem] truncate cursor-default"
+                    >
+                      Vilar: {name}
+                    </div>
+                  );
+                })}
               </div>
-              {runningKOStages.length > 1 ? (
-                <div className="space-y-4">
-                  {(["quarter_final", "semi_final", "final", "bronze"] as const).map((stage) => {
-                    const stageCourts = sortedCourts.filter(
-                      (c) => matchByCourt.get(c.id)?.stage === stage
-                    );
-                    if (stageCourts.length === 0) return null;
-                    return (
-                      <div key={stage}>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold text-white"
-                            style={{ backgroundColor: koStageBadgeColor(stage) }}
-                          >
-                            {KO_STAGE_LABEL[stage] ?? stage}
-                          </span>
-                          <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
-                        </div>
-                        <div
-                          className={`grid gap-2 ${stageCourts.length > 1 ? "lg:grid-cols-2" : "grid-cols-1"}`}
-                        >
-                          {stageCourts.map((c) => {
-                            const m = matchByCourt.get(c.id)!;
-                            const blocking = blockedBy.get(c.id);
-                            if (blocking && blocking.length > 0) {
-                              return (
-                                <LockedCard
-                                  key={m.id}
-                                  match={m}
-                                  team1={teamMap.get(m.team1_id)!}
-                                  team2={teamMap.get(m.team2_id)!}
-                                  playerMap={playerMap}
-                                  courtName={c.name}
-                                  stage={matchDisplayStageLabel(m)}
-                                  badgeClass={badgeClassForMatch(m, groupIndexMap)}
-                                  blockingTeams={blocking}
-                                />
-                              );
-                            }
-                            return (
-                              <MatchCard
-                                key={m.id}
-                                match={m}
-                                team1={teamMap.get(m.team1_id)!}
-                                team2={teamMap.get(m.team2_id)!}
-                                playerMap={playerMap}
-                                courtName={c.name}
-                                stage={matchDisplayStageLabel(m)}
-                                badgeClass={badgeClassForMatch(m, groupIndexMap)}
-                                onSave={(s1, s2) => saveScore(m, s1, s2)}
-                                busy={busy === m.id}
-                                gamesPerMatch={tournament.games_per_match}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div
-                  className={`grid gap-2 ${courts.length > 1 ? "lg:grid-cols-2" : "grid-cols-1"}`}
-                >
-                  {courts.length === 0 && (
-                    <div className="text-sm text-zinc-500">Inga banor.</div>
-                  )}
-                  {sortedCourts.map((c) => {
-                    const m = matchByCourt.get(c.id);
-                    if (!m) return null;
-                    const blocking = blockedBy.get(c.id);
-                    if (blocking && blocking.length > 0) {
-                      return (
-                        <LockedCard
-                          key={m.id}
-                          match={m}
-                          team1={teamMap.get(m.team1_id)!}
-                          team2={teamMap.get(m.team2_id)!}
-                          playerMap={playerMap}
-                          courtName={c.name}
-                          stage={matchDisplayStageLabel(m)}
-                          badgeClass={badgeClassForMatch(m, groupIndexMap)}
-                          blockingTeams={blocking}
-                        />
-                      );
-                    }
-                    return (
-                      <MatchCard
-                        key={m.id}
-                        match={m}
-                        team1={teamMap.get(m.team1_id)!}
-                        team2={teamMap.get(m.team2_id)!}
-                        playerMap={playerMap}
-                        courtName={c.name}
-                        stage={matchDisplayStageLabel(m)}
-                        badgeClass={badgeClassForMatch(m, groupIndexMap)}
-                        onSave={(s1, s2) => saveScore(m, s1, s2)}
-                        busy={busy === m.id}
-                        gamesPerMatch={tournament.games_per_match}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-        </section>
-
-        <aside className="space-y-4">
-          {hasKO && (
+            )}
+            {groups.length === 0 ? (
+              <div className="text-sm text-zinc-500">Inga grupper.</div>
+            ) : (
+              <div
+                className="grid gap-3 items-start overflow-x-auto"
+                style={{
+                  gridTemplateColumns: `repeat(${groups.length}, minmax(280px, 1fr))`,
+                }}
+              >
+                {groups.map((g, gi) => (
+                  <GroupColumn
+                    key={g.id}
+                    group={g}
+                    paletteIndex={gi}
+                    groupTeams={teams.filter((t) => t.group_id === g.id)}
+                    groupMatches={matches.filter(
+                      (m) => m.stage === "group" && m.group_id === g.id
+                    )}
+                    playerMap={playerMap}
+                    teamMap={teamMap}
+                    courtMap={courtMap}
+                    matchUiStates={matchUiStates}
+                    advancesPerGroup={advancesPerGroup}
+                    gamesPerMatch={tournament.games_per_match}
+                    onSave={saveScore}
+                    busyId={busy}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="space-y-4">
             <KOResultsPanel
               koMatches={koMatches}
               teamMap={teamMap}
               playerMap={playerMap}
             />
-          )}
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 mb-2">
-              Betalning
-            </h2>
-            <PaymentPanel
-              players={paymentRows}
-              accent={tenant.primary_color || "#10b981"}
-              onSetPaid={handleSetPaid}
-            />
+            {sortedBrackets.length === 0 ? (
+              <div className="text-sm text-zinc-500">Inga slutspelsmatcher.</div>
+            ) : (
+              <div
+                className="grid gap-3 items-start overflow-x-auto"
+                style={{
+                  gridTemplateColumns: `repeat(${sortedBrackets.length}, minmax(320px, 1fr))`,
+                }}
+              >
+                {sortedBrackets.map((bracket) => (
+                  <BracketSection
+                    key={bracket}
+                    bracket={bracket}
+                    bracketMatches={koByBracket.get(bracket) ?? []}
+                    progress={
+                      koBracketProgress.find((p) => p.bracket === bracket) ?? {
+                        bracket,
+                        completed: 0,
+                        total: 0,
+                        runningStage: null,
+                      }
+                    }
+                    courts={courts}
+                    teamMap={teamMap}
+                    playerMap={playerMap}
+                    groupIndexMap={groupIndexMap}
+                    matchDisplayStageLabel={matchDisplayStageLabel}
+                    saveScore={saveScore}
+                    busy={busy}
+                    gamesPerMatch={tournament.games_per_match}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        </aside>
+        )}
       </main>
+
+      {paymentOpen && (
+        <PaymentModal onClose={() => setPaymentOpen(false)}>
+          <PaymentPanel
+            players={paymentRows}
+            accent={tenant.primary_color || "#10b981"}
+            onSetPaid={handleSetPaid}
+          />
+        </PaymentModal>
+      )}
     </div>
   );
 }
@@ -1061,118 +1006,91 @@ function HostInner({
 // Shown when: all group play done + no KO matches yet (ready_for_playoff)
 // OR: a KO round just finished and there's a next round to generate.
 
+// Multi-bracket starter: generates the first round of every slutspel
+// (A-slutspel, B-slutspel, …) at once. Subsequent rounds are produced by
+// autoAdvanceKO when feeder matches finish.
 function PlayoffPanel({
   tournament,
   groupStandings,
-  koMatches,
   courts,
   accent,
-  lastCompletedKORound,
-  byeTeamIds,
   teamMap,
   playerMap,
   onGenerated,
 }: {
   tournament: Tournament;
   groupStandings: GroupStanding[];
-  koMatches: TournamentMatch[];
   courts: Court[];
   accent: string;
-  lastCompletedKORound: number | null;
-  byeTeamIds: string[];
   teamMap: Map<string, TournamentTeam>;
   playerMap: Map<string, Player>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onGenerated: () => Promise<any>;
 }) {
-  const isFirstRound = koMatches.length === 0;
   const hasBronze = tournament.has_bronze;
-
-  const byes = byeCount(groupStandings);
-  const [byeGroupIds, setByeGroupIds] = useState<Set<string>>(new Set());
   const [generating, setGenerating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const previewMatchups = useMemo(() => {
-    if (!isFirstRound) return [];
-    return generateFirstKORound(
-      groupStandings,
-      Array.from(byeGroupIds),
-      [],
-      tournament.id,
-      hasBronze
-    );
-  }, [isFirstRound, groupStandings, byeGroupIds, tournament.id, hasBronze]);
+  // Preview every bracket's first-round matchups, regardless of court selection.
+  const previewMatchups = useMemo(
+    () => generateFirstKORound(groupStandings, [], [], tournament.id, hasBronze),
+    [groupStandings, tournament.id, hasBronze]
+  );
 
-  // Matches completed in the most recent KO round (used to feed generateNextKORound).
-  const completedRoundMatches = useMemo(() => {
-    if (isFirstRound || lastCompletedKORound === null) return [];
-    return koMatches.filter(
-      (m) => m.round_number === lastCompletedKORound && m.status === "completed" && m.stage !== "bronze"
-    );
-  }, [isFirstRound, koMatches, lastCompletedKORound]);
-
-  // Number of entrants in the round we're about to generate. Each match takes 2.
-  const nextRoundEntrants = useMemo(() => {
-    if (isFirstRound) {
-      // First round entrants are computed inside generateFirstKORound; use preview length × 2.
-      return previewMatchups.length * 2;
+  // One bracket entry per advancing rank (or 1 entry for single-group fallback).
+  type BracketPreview = {
+    bracket: string;
+    matches: typeof previewMatchups;
+    teams: number;
+  };
+  const previewByBracket = useMemo<BracketPreview[]>(() => {
+    const map = new Map<string, BracketPreview>();
+    for (const m of previewMatchups) {
+      const b = m.bracket ?? "A";
+      let entry = map.get(b);
+      if (!entry) {
+        entry = { bracket: b, matches: [], teams: 0 };
+        map.set(b, entry);
+      }
+      entry.matches.push(m);
     }
-    return completedRoundMatches.length + byeTeamIds.length;
-  }, [isFirstRound, previewMatchups, completedRoundMatches, byeTeamIds]);
+    // Compute team count per bracket from groupStandings
+    if (groupStandings.length <= 1) {
+      const e = map.get("A");
+      if (e) e.teams = groupStandings.reduce((s, g) => s + g.standings.length, 0);
+    } else {
+      for (const [letter, e] of map) {
+        const rank = letter.charCodeAt(0) - "A".charCodeAt(0);
+        e.teams = groupStandings.reduce(
+          (s, g) => s + (rank < g.standings.length ? 1 : 0),
+          0
+        );
+      }
+    }
+    return [...map.values()].sort((a, b) => a.bracket.localeCompare(b.bracket));
+  }, [previewMatchups, groupStandings]);
 
-  const recommendedCount = useMemo(() => {
-    if (isFirstRound) return previewMatchups.length;
-    const matchCount = Math.floor(nextRoundEntrants / 2);
-    // Bronze is only generated when we're going from 2 semis to a Final.
-    const goingToFinal = nextRoundEntrants === 2;
-    const bronzeCount = hasBronze && goingToFinal && completedRoundMatches.length === 2 ? 1 : 0;
-    return matchCount + bronzeCount;
-  }, [isFirstRound, previewMatchups, nextRoundEntrants, completedRoundMatches, hasBronze]);
+  const recommendedCount = previewMatchups.length;
 
   const [selectedCourts, setSelectedCourts] = useState<Set<string>>(
-    () => new Set(courts.slice(0, recommendedCount).map((c) => c.id))
+    () => new Set(courts.slice(0, Math.max(1, recommendedCount)).map((c) => c.id))
   );
 
   const chosenCourts = courts.filter((c) => selectedCourts.has(c.id));
-
-  const canGenerate =
-    chosenCourts.length > 0 &&
-    byeGroupIds.size === byes;
-
-  const totalAdvancing = groupStandings.reduce((s, g) => s + g.standings.length, 0);
-  const stageLabel = isFirstRound
-    ? firstKOStageLabel(totalAdvancing)
-    : stageLabelForEntrants(nextRoundEntrants);
-
-  const bracketPath = useMemo(
-    () => (isFirstRound ? computeBracketPath(totalAdvancing, hasBronze) : []),
-    [isFirstRound, totalAdvancing, hasBronze]
-  );
+  const canGenerate = chosenCourts.length > 0 && previewMatchups.length > 0;
 
   async function generate() {
     if (!canGenerate) return;
     setErr(null);
     setGenerating(true);
     try {
-      let newMatches;
-      if (isFirstRound) {
-        newMatches = generateFirstKORound(
-          groupStandings,
-          Array.from(byeGroupIds),
-          chosenCourts,
-          tournament.id,
-          hasBronze
-        );
-      } else {
-        newMatches = generateNextKORound(
-          completedRoundMatches,
-          byeTeamIds,
-          chosenCourts,
-          tournament.id,
-          hasBronze
-        );
-      }
+      const newMatches = generateFirstKORound(
+        groupStandings,
+        [],
+        chosenCourts,
+        tournament.id,
+        hasBronze
+      );
       if (newMatches.length === 0) {
         setErr("Inga matcher kunde genereras. Kontrollera inställningarna.");
         return;
@@ -1193,10 +1111,12 @@ function PlayoffPanel({
           className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold text-white"
           style={{ backgroundColor: accent }}
         >
-          {stageLabel}
+          Starta slutspel
         </span>
         <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-          {isFirstRound ? "Starta slutspel" : `Generera ${stageLabel}`}
+          {previewByBracket.length > 1
+            ? `${previewByBracket.length} slutspel genereras parallellt`
+            : "Slutspel"}
         </h2>
       </div>
 
@@ -1207,25 +1127,104 @@ function PlayoffPanel({
       )}
 
       {/* Group standings with advancing teams highlighted */}
-      {isFirstRound && (
-        <div
-          className="mb-4 grid gap-3"
-          style={{ gridTemplateColumns: `repeat(${groupStandings.length}, minmax(0, 1fr))` }}
-        >
-          {groupStandings.map((g, gi) => {
-            const palette = groupPaletteFor(gi);
-            return (
-              <div key={g.groupId} className={`rounded-lg border overflow-hidden`}>
-                <div className={`px-3 py-1.5 text-xs font-semibold ${palette.bar}`}>
-                  {g.groupName} — vidare
-                </div>
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {g.standings.map((s, i) => {
-                    const t = teamMap.get(s.team_id);
-                    return (
-                      <div key={s.team_id} className="px-3 py-1.5 flex items-center gap-2">
+      <div
+        className="mb-4 grid gap-3"
+        style={{ gridTemplateColumns: `repeat(${groupStandings.length}, minmax(0, 1fr))` }}
+      >
+        {groupStandings.map((g, gi) => {
+          const palette = groupPaletteFor(gi);
+          return (
+            <div key={g.groupId} className="rounded-lg border overflow-hidden">
+              <div className={`px-3 py-1.5 text-xs font-semibold ${palette.bar}`}>
+                {g.groupName} — vidare
+              </div>
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {g.standings.map((s, i) => {
+                  const t = teamMap.get(s.team_id);
+                  const letter = bracketLetter(i);
+                  return (
+                    <div
+                      key={s.team_id}
+                      className="px-3 py-1.5 flex items-center gap-2 justify-between"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
                         <span className="text-xs text-zinc-400 w-4">{i + 1}</span>
-                        <span className="text-xs font-medium truncate">{t ? shortTeamName(t, playerMap) : s.teamName}</span>
+                        <span className="text-xs font-medium truncate">
+                          {t ? shortTeamName(t, playerMap) : s.teamName}
+                        </span>
+                      </div>
+                      <span className="shrink-0 text-[10px] uppercase tracking-wide font-semibold text-emerald-700 dark:text-emerald-400">
+                        → {letter}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Per-bracket preview */}
+      {previewByBracket.length > 0 && (
+        <div className="mb-4 grid gap-3" style={{ gridTemplateColumns: `repeat(${previewByBracket.length}, minmax(0, 1fr))` }}>
+          {previewByBracket.map((b) => {
+            const path = computeBracketPath(b.teams, hasBronze);
+            return (
+              <div key={b.bracket} className="rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+                <div className="px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 text-xs font-semibold text-zinc-700 dark:text-zinc-300 flex items-center justify-between gap-2">
+                  <span>{bracketLabel(b.bracket)}</span>
+                  <span className="text-zinc-400 font-normal">{b.teams} lag</span>
+                </div>
+                {path.length > 0 && (
+                  <div className="px-3 pt-2 flex items-center gap-1 flex-wrap text-[10px]">
+                    {path.map((step, i) => (
+                      <span key={i} className="flex items-center gap-1">
+                        {i > 0 && <span className="text-zinc-300">→</span>}
+                        <span
+                          className={`px-1.5 py-0.5 rounded font-semibold ${
+                            step.isNow
+                              ? "text-white"
+                              : "text-zinc-500 bg-zinc-100 dark:bg-zinc-800"
+                          }`}
+                          style={
+                            step.isNow
+                              ? {
+                                  backgroundColor: koStageBadgeColor(
+                                    step.label === "Kvartsfinal"
+                                      ? "quarter_final"
+                                      : step.label === "Semifinal"
+                                      ? "semi_final"
+                                      : step.label === "Final"
+                                      ? "final"
+                                      : step.label === "Bronsmatch"
+                                      ? "bronze"
+                                      : "quarter_final"
+                                  ),
+                                }
+                              : undefined
+                          }
+                        >
+                          {step.label}
+                          {step.matchCount > 1 ? ` ×${step.matchCount}` : ""}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-800 mt-1">
+                  {b.matches.map((m, i) => {
+                    const t1 = teamMap.get(m.team1_id);
+                    const t2 = teamMap.get(m.team2_id);
+                    return (
+                      <div key={i} className="px-3 py-1.5 flex items-center gap-2 text-xs">
+                        <span className="font-medium truncate flex-1 text-right">
+                          {t1 ? shortTeamName(t1, playerMap) : "?"}
+                        </span>
+                        <span className="text-zinc-400 shrink-0">vs</span>
+                        <span className="font-medium truncate flex-1">
+                          {t2 ? shortTeamName(t2, playerMap) : "?"}
+                        </span>
                       </div>
                     );
                   })}
@@ -1233,106 +1232,6 @@ function PlayoffPanel({
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* Bracket roadmap — shows the full path and which step is being generated now */}
-      {isFirstRound && bracketPath.length > 0 && (
-        <div className="mb-4 flex items-center gap-1.5 flex-wrap">
-          {bracketPath.map((step, i) => (
-            <div key={i} className="flex items-center gap-1.5">
-              {i > 0 && <span className="text-zinc-300 text-xs">→</span>}
-              <div
-                className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold border ${
-                  step.isNow
-                    ? "text-white border-transparent"
-                    : "text-zinc-400 bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700"
-                }`}
-                style={step.isNow ? { backgroundColor: koStageBadgeColor(
-                  step.label === "Kvartsfinal" ? "quarter_final"
-                    : step.label === "Semifinal" ? "semi_final"
-                    : step.label === "Final" ? "final"
-                    : step.label === "Bronsmatch" ? "bronze"
-                    : "quarter_final"
-                ) } : undefined}
-              >
-                <span>{step.label}</span>
-                <span className={step.isNow ? "text-white/70" : "text-zinc-300"}>
-                  {step.matchCount === 1 ? "" : ` ×${step.matchCount}`}
-                </span>
-                {!step.isNow && (
-                  <span className="text-[10px] text-zinc-300 font-normal ml-0.5">auto</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Match preview — only shows the matches being generated right now */}
-      {isFirstRound && previewMatchups.length > 0 && (
-        <div className="mb-4 rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
-          <div className="px-3 py-1.5 text-xs font-semibold bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 flex items-center justify-between">
-            <span>
-              {stageLabel === "Inledningsrunda"
-                ? "Inledningsrunda — dessa matcher spelas först"
-                : "Matchningar"}
-            </span>
-            {stageLabel === "Inledningsrunda" && (
-              <span className="text-zinc-400 font-normal">övriga kvartsfinalsmatcher auto-genereras</span>
-            )}
-          </div>
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {previewMatchups.map((m, i) => {
-              const t1 = teamMap.get(m.team1_id);
-              const t2 = teamMap.get(m.team2_id);
-              return (
-                <div key={i} className="px-3 py-1.5 flex items-center gap-2 text-xs">
-                  <span className="text-zinc-400 w-4 shrink-0">{i + 1}</span>
-                  <span className="font-medium truncate">{t1 ? shortTeamName(t1, playerMap) : "?"}</span>
-                  <span className="text-zinc-400 shrink-0">vs</span>
-                  <span className="font-medium truncate">{t2 ? shortTeamName(t2, playerMap) : "?"}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Bye selection */}
-      {isFirstRound && byes > 0 && (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-3">
-          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
-            {byes} frival — välj vilka grupper:
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {groupStandings.map((g) => {
-              const checked = byeGroupIds.has(g.groupId);
-              const disabled = !checked && byeGroupIds.size >= byes;
-              return (
-                <label key={g.groupId} className={`flex items-center gap-1.5 text-xs font-medium cursor-pointer ${disabled ? "opacity-40" : ""}`}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={disabled}
-                    onChange={(e) => {
-                      setByeGroupIds((prev) => {
-                        const next = new Set(prev);
-                        if (e.target.checked) next.add(g.groupId);
-                        else next.delete(g.groupId);
-                        return next;
-                      });
-                    }}
-                    className="rounded"
-                  />
-                  {g.groupName}
-                </label>
-              );
-            })}
-          </div>
-          {byeGroupIds.size < byes && (
-            <p className="text-[10px] text-amber-700 mt-1">Välj {byes - byeGroupIds.size} till</p>
-          )}
         </div>
       )}
 
@@ -1387,23 +1286,10 @@ function PlayoffPanel({
         className="px-5 py-2 rounded-md text-white text-sm font-semibold disabled:opacity-50 transition-opacity"
         style={{ backgroundColor: accent }}
       >
-        {generating ? "Genererar..." : `Generera ${stageLabel} →`}
+        {generating ? "Genererar..." : "Starta slutspel →"}
       </button>
     </div>
   );
-}
-
-function firstKOStageLabel(total: number): string {
-  if (total <= 2) return "Final";
-  if (total <= 4) return "Semifinal";
-  if (total > 8) return "Inledningsrunda"; // play-in before QF
-  return "Kvartsfinal";
-}
-
-function stageLabelForEntrants(n: number): string {
-  if (n === 2) return "Final";
-  if (n <= 4) return "Semifinal";
-  return "Kvartsfinal";
 }
 
 // Returns the full bracket path for display in the panel, given the number of advancing teams.
@@ -1591,7 +1477,7 @@ function MatchCard({
   );
 }
 
-// Shows completed KO match results, grouped by stage (newest stage first).
+// Shows completed KO match results, grouped by bracket then by stage.
 function KOResultsPanel({
   koMatches,
   teamMap,
@@ -1604,48 +1490,87 @@ function KOResultsPanel({
   const completed = koMatches.filter((m) => m.status === "completed");
   if (completed.length === 0) return null;
 
+  const byBracket = new Map<string, TournamentMatch[]>();
+  for (const m of completed) {
+    const b = m.bracket ?? "A";
+    const arr = byBracket.get(b) ?? [];
+    arr.push(m);
+    byBracket.set(b, arr);
+  }
+  const sortedBrackets = [...byBracket.keys()].sort();
+
   const stageOrder: MatchStage[] = ["bronze", "final", "semi_final", "quarter_final"];
-  const grouped = stageOrder
-    .map((stage) => ({
-      stage,
-      matches: completed.filter((m) => m.stage === stage),
-    }))
-    .filter((g) => g.matches.length > 0);
 
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
       <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 font-medium text-sm text-zinc-700 dark:text-zinc-300">
         Slutspelsresultat
       </div>
-      <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-        {grouped.map(({ stage, matches }) => (
-          <div key={stage}>
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: `repeat(${sortedBrackets.length}, minmax(0, 1fr))`,
+        }}
+      >
+        {sortedBrackets.map((bracket) => {
+          const grouped = stageOrder
+            .map((stage) => ({
+              stage,
+              matches: (byBracket.get(bracket) ?? []).filter((m) => m.stage === stage),
+            }))
+            .filter((g) => g.matches.length > 0);
+          return (
             <div
-              className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
-              style={{ color: koStageBadgeColor(stage) }}
+              key={bracket}
+              className="border-r last:border-r-0 border-zinc-100 dark:border-zinc-800"
             >
-              {KO_STAGE_LABEL[stage] ?? stage}
+              <div className="px-3 py-1.5 text-xs font-semibold border-b border-zinc-100 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200">
+                {bracketLabel(bracket)}
+              </div>
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {grouped.map(({ stage, matches }) => (
+                  <div key={stage}>
+                    <div
+                      className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide"
+                      style={{ color: koStageBadgeColor(stage) }}
+                    >
+                      {KO_STAGE_LABEL[stage] ?? stage}
+                    </div>
+                    {matches.map((m) => {
+                      const t1 = teamMap.get(m.team1_id);
+                      const t2 = teamMap.get(m.team2_id);
+                      const t1Wins = (m.score_team1 ?? 0) > (m.score_team2 ?? 0);
+                      return (
+                        <div
+                          key={m.id}
+                          className="px-3 py-1.5 flex items-center gap-2 text-xs"
+                        >
+                          <span
+                            className={`flex-1 truncate font-medium ${
+                              t1Wins ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"
+                            }`}
+                          >
+                            {t1 ? shortTeamName(t1, playerMap) : "?"}
+                          </span>
+                          <span className="tabular-nums font-bold shrink-0 text-zinc-700 dark:text-zinc-300">
+                            {m.score_team1 ?? "–"}–{m.score_team2 ?? "–"}
+                          </span>
+                          <span
+                            className={`flex-1 truncate font-medium text-right ${
+                              !t1Wins ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"
+                            }`}
+                          >
+                            {t2 ? shortTeamName(t2, playerMap) : "?"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
-            {matches.map((m) => {
-              const t1 = teamMap.get(m.team1_id);
-              const t2 = teamMap.get(m.team2_id);
-              const t1Wins = (m.score_team1 ?? 0) > (m.score_team2 ?? 0);
-              return (
-                <div key={m.id} className="px-3 py-1.5 flex items-center gap-2 text-xs">
-                  <span className={`flex-1 truncate font-medium ${t1Wins ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"}`}>
-                    {t1 ? shortTeamName(t1, playerMap) : "?"}
-                  </span>
-                  <span className="tabular-nums font-bold shrink-0 text-zinc-700 dark:text-zinc-300">
-                    {m.score_team1 ?? "–"}–{m.score_team2 ?? "–"}
-                  </span>
-                  <span className={`flex-1 truncate font-medium text-right ${!t1Wins ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-400"}`}>
-                    {t2 ? shortTeamName(t2, playerMap) : "?"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -2067,53 +1992,175 @@ function GroupColumn({
   );
 }
 
-function LockedCard({
-  match,
-  team1,
-  team2,
+// Renders one bracket's column during KO phase: header (bracket name +
+// progress) and a list of matches grouped by stage, one card per active
+// match per court. Completed matches show in KOResultsPanel (above).
+function BracketSection({
+  bracket,
+  bracketMatches,
+  progress,
+  courts,
+  teamMap,
   playerMap,
-  courtName,
-  stage,
-  badgeClass,
-  blockingTeams,
+  groupIndexMap,
+  matchDisplayStageLabel,
+  saveScore,
+  busy,
+  gamesPerMatch,
 }: {
-  match: TournamentMatch;
-  team1: TournamentTeam;
-  team2: TournamentTeam;
+  bracket: string;
+  bracketMatches: TournamentMatch[];
+  progress: { bracket: string; completed: number; total: number; runningStage: MatchStage | null };
+  courts: Court[];
+  teamMap: Map<string, TournamentTeam>;
   playerMap: Map<string, Player>;
-  courtName: string;
-  stage: string;
-  badgeClass: string;
-  blockingTeams: TournamentTeam[];
+  groupIndexMap: Map<string, number>;
+  matchDisplayStageLabel: (m: TournamentMatch) => string;
+  saveScore: (m: TournamentMatch, s1: number, s2: number) => Promise<void>;
+  busy: string | null;
+  gamesPerMatch: number;
 }) {
-  const team1Label = shortTeamName(team1, playerMap);
-  const team2Label = shortTeamName(team2, playerMap);
-  const waitingFor = blockingTeams.map((t) => shortTeamName(t, playerMap)).join(" & ");
+  const stageOrder: MatchStage[] = ["quarter_final", "semi_final", "final", "bronze"];
+
+  // Active match per court for this bracket: the lowest-round incomplete match.
+  const activeByCourt = useMemo(() => {
+    const map = new Map<string, TournamentMatch>();
+    for (const m of bracketMatches) {
+      if (m.status === "completed") continue;
+      if (!m.court_id) continue;
+      const prev = map.get(m.court_id);
+      if (!prev || m.round_number < prev.round_number) {
+        map.set(m.court_id, m);
+      }
+    }
+    return map;
+  }, [bracketMatches]);
+
+  // Group active matches by stage so they render under stage headers.
+  const matchesByStage = useMemo(() => {
+    const buckets = new Map<MatchStage, { court: Court; match: TournamentMatch }[]>();
+    for (const c of courts) {
+      const m = activeByCourt.get(c.id);
+      if (!m) continue;
+      const arr = buckets.get(m.stage) ?? [];
+      arr.push({ court: c, match: m });
+      buckets.set(m.stage, arr);
+    }
+    return buckets;
+  }, [courts, activeByCourt]);
+
+  const allDone = bracketMatches.length > 0 && bracketMatches.every((m) => m.status === "completed");
+
   return (
-    <div className="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 p-2.5">
-      <div className="flex justify-between items-center text-[10px] uppercase tracking-wide text-zinc-500 mb-1.5">
-        <span className="font-semibold">{courtName}</span>
-        <div className="flex items-center gap-1.5">
-          <span className={`px-1.5 py-px rounded font-semibold ${badgeClass}`}>{stage}</span>
-          <span className="px-1.5 py-px rounded font-semibold bg-amber-100 text-amber-700">Nästa</span>
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col min-w-0">
+      <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{bracketLabel(bracket)}</h3>
+        <div className="flex items-center gap-2 text-[11px] text-zinc-500 shrink-0">
+          {progress.runningStage && (
+            <span
+              className="inline-flex items-center px-1.5 py-px rounded text-[10px] font-bold uppercase tracking-wide text-white"
+              style={{ backgroundColor: koStageBadgeColor(progress.runningStage) }}
+            >
+              {KO_STAGE_LABEL[progress.runningStage] ?? progress.runningStage}
+            </span>
+          )}
+          <span className="tabular-nums font-semibold">
+            {progress.completed}
+            <span className="text-zinc-400 font-normal">/{progress.total}</span>
+          </span>
         </div>
       </div>
-      <div className="flex items-stretch gap-2 opacity-50">
-        <div className="flex-1 min-w-0 flex items-center justify-end text-right text-sm font-medium px-2 bg-zinc-50 dark:bg-zinc-800/40 rounded">
-          <span className="truncate">{team1Label}</span>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="w-12 h-9 rounded border-2 border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60 flex items-center justify-center text-zinc-300 text-lg font-bold">–</div>
-          <span className="text-zinc-400 text-sm">–</span>
-          <div className="w-12 h-9 rounded border-2 border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60 flex items-center justify-center text-zinc-300 text-lg font-bold">–</div>
-        </div>
-        <div className="flex-1 min-w-0 flex items-center justify-start text-left text-sm font-medium px-2 bg-zinc-50 dark:bg-zinc-800/40 rounded">
-          <span className="truncate">{team2Label}</span>
-        </div>
+      <div className="p-3 space-y-3">
+        {allDone ? (
+          <div className="rounded-md border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 font-medium">
+            Slutspelet är klart.
+          </div>
+        ) : matchesByStage.size === 0 ? (
+          <div className="text-xs text-zinc-500">Väntar på nästa runda…</div>
+        ) : (
+          stageOrder.map((stage) => {
+            const items = matchesByStage.get(stage) ?? [];
+            if (items.length === 0) return null;
+            return (
+              <div key={stage}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-white"
+                    style={{ backgroundColor: koStageBadgeColor(stage) }}
+                  >
+                    {KO_STAGE_LABEL[stage] ?? stage}
+                  </span>
+                  <div className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+                </div>
+                <div className="grid gap-2 grid-cols-1">
+                  {items.map(({ court, match }) => (
+                    <MatchCard
+                      key={match.id}
+                      match={match}
+                      team1={teamMap.get(match.team1_id)!}
+                      team2={teamMap.get(match.team2_id)!}
+                      playerMap={playerMap}
+                      courtName={court.name}
+                      stage={matchDisplayStageLabel(match)}
+                      badgeClass={badgeClassForMatch(match, groupIndexMap)}
+                      onSave={(s1, s2) => saveScore(match, s1, s2)}
+                      busy={busy === match.id}
+                      gamesPerMatch={gamesPerMatch}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
-      <div className="mt-1.5 flex items-center justify-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-400 font-medium">
-        <span>Väntar på:</span>
-        <span className="font-semibold">{waitingFor}</span>
+    </div>
+  );
+}
+
+// Slide-in modal containing the payment list. Triggered by the Betalning
+// button in the header so the main content can use the full viewport width.
+function PaymentModal({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-end p-4 bg-zinc-950/40"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Betalning"
+    >
+      <div
+        className="w-full max-w-md max-h-[90vh] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Betalning</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Stäng"
+            className="h-8 w-8 rounded text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden>
+              <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L8.94 10l-4.72 4.72a.75.75 0 1 0 1.06 1.06L10 11.06l4.72 4.72a.75.75 0 1 0 1.06-1.06L11.06 10l4.72-4.72a.75.75 0 0 0-1.06-1.06L10 8.94 5.28 4.22Z" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">{children}</div>
       </div>
     </div>
   );

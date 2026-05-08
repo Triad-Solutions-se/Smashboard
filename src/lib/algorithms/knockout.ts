@@ -34,15 +34,45 @@ export type GroupStanding = {
   standings: TeamStanding[];
 };
 
-// Classic cross-bracket seeding.
-// Groups sorted by sort_order. Seeds interleave so same-group teams
-// can only meet in the final. Bye groups skip QF and go straight to SF.
+// Letter for bracket index 0 → 'A', 1 → 'B', etc. Caps at 'Z'.
+export function bracketLetter(index: number): string {
+  return String.fromCharCode(65 + Math.min(25, Math.max(0, index)));
+}
+
+export function bracketLabel(letter: string): string {
+  return `${letter}-slutspel`;
+}
+
+// Number of brackets a tournament should produce: one per advancing rank.
+// With ≥2 groups: equals the largest standings.length (i.e. advances_per_group).
+// With 1 group: a single combined bracket of all advancing teams.
+export function bracketCount(groupStandings: GroupStanding[]): number {
+  if (groupStandings.length <= 1) return groupStandings.length === 0 ? 0 : 1;
+  return Math.max(...groupStandings.map((g) => g.standings.length));
+}
+
+// Splits the host-selected courts across brackets so each bracket runs on its
+// own set without competing for the same court. Round-robin distribution gives
+// every bracket a court even when courts.length < numBrackets.
+function bracketCourts(
+  allCourts: Court[],
+  bracketIdx: number,
+  numBrackets: number
+): Court[] {
+  if (numBrackets <= 1) return allCourts;
+  const filtered = allCourts.filter((_, i) => i % numBrackets === bracketIdx);
+  return filtered.length > 0 ? filtered : allCourts;
+}
+
+// Generate the first KO round across ALL brackets (A-slutspel, B-slutspel, …).
 //
-// Example: 4 groups × 2 advance, no byes
-//   Slots: A1, B1, C1, D1, A2, B2, C2, D2
-//   QF1: A1 vs D2, QF2: B1 vs C2, QF3: C1 vs B2, QF4: D1 vs A2
+// With ≥2 groups, each bracket contains the rank-N team from every group.
+// With 1 group, a single A-slutspel contains all advancing teams (legacy
+// single-bracket behavior — there's no other group to pair against).
 //
-// byeGroupIds: group IDs whose 1st-place seed gets a bye (skips QF, goes to SF)
+// `byeGroupIds` is kept for API-compatibility but unused (byes are computed
+// internally per bracket — top seeds get internal byes when bracket size is
+// not a power of two).
 export function generateFirstKORound(
   groupStandings: GroupStanding[],
   byeGroupIds: string[],
@@ -50,74 +80,132 @@ export function generateFirstKORound(
   tournamentId: string,
   hasBronze: boolean
 ): GeneratedKOMatch[] {
-  const totalAdvancing = groupStandings.reduce(
+  void byeGroupIds; // reserved for future host-overridden bye selection
+  if (groupStandings.length === 0) return [];
+
+  if (groupStandings.length === 1) {
+    // Single-group fallback: all advancing teams form one A-slutspel bracket.
+    const sole = groupStandings[0];
+    const bracketStandings: GroupStanding[] = [
+      { groupId: sole.groupId, groupName: sole.groupName, standings: sole.standings },
+    ];
+    return generateBracketFirstRound(bracketStandings, courts, tournamentId, hasBronze, "A");
+  }
+
+  const brackets = bracketCount(groupStandings);
+  const out: GeneratedKOMatch[] = [];
+  for (let rank = 0; rank < brackets; rank++) {
+    const subStandings: GroupStanding[] = groupStandings
+      .map((g) => ({
+        groupId: g.groupId,
+        groupName: g.groupName,
+        standings: rank < g.standings.length ? [g.standings[rank]] : [],
+      }))
+      .filter((g) => g.standings.length > 0);
+    if (subStandings.length < 2) continue; // can't run a 1-team bracket
+    const courtsForBracket = bracketCourts(courts, rank, brackets);
+    out.push(
+      ...generateBracketFirstRound(
+        subStandings,
+        courtsForBracket,
+        tournamentId,
+        hasBronze,
+        bracketLetter(rank)
+      )
+    );
+  }
+  return out;
+}
+
+// Generates the first KO round for a SINGLE bracket. `bracketStandings` is a
+// list of GroupStandings where each entry's standings array is the slice of
+// teams contributing to this bracket. For per-rank brackets that's exactly
+// one team per group; for the single-group fallback it's all advancing teams.
+function generateBracketFirstRound(
+  bracketStandings: GroupStanding[],
+  courts: Court[],
+  tournamentId: string,
+  hasBronze: boolean,
+  bracket: string
+): GeneratedKOMatch[] {
+  const totalAdvancing = bracketStandings.reduce(
     (sum, g) => sum + g.standings.length,
     0
   );
+  if (totalAdvancing < 2) return [];
 
   const stage = firstKOStage(totalAdvancing);
-
-  // For a Final or Semi-final with no byes we use the simple path.
   if (stage === "final") {
-    return buildFinalMatches(groupStandings, courts, tournamentId, hasBronze);
+    return buildFinalMatches(bracketStandings, courts, tournamentId, bracket);
   }
-
   if (stage === "semi_final") {
-    return buildSFMatches(groupStandings, byeGroupIds, courts, tournamentId, hasBronze);
+    return buildSFMatches(bracketStandings, courts, tournamentId, bracket);
   }
-
-  // Quarter-final
-  return buildQFMatches(groupStandings, byeGroupIds, courts, tournamentId, hasBronze);
+  return buildQFMatches(bracketStandings, courts, tournamentId, hasBronze, bracket);
 }
 
 // 2 teams advancing → straight to Final
 function buildFinalMatches(
-  groupStandings: GroupStanding[],
+  bracketStandings: GroupStanding[],
   courts: Court[],
   tournamentId: string,
-  hasBronze: boolean
+  bracket: string
 ): GeneratedKOMatch[] {
-  const seeds = collectSeeds(groupStandings, Math.max(...groupStandings.map((g) => g.standings.length)));
+  const advancesPerGroup = Math.max(
+    ...bracketStandings.map((g) => g.standings.length)
+  );
+  const seeds = collectSeeds(bracketStandings, advancesPerGroup);
   if (seeds.length < 2) return [];
   const court = courts[0] ?? null;
-  return [makeMatch(tournamentId, seeds[0].team_id, seeds[1].team_id, "final", court, 1)];
+  return [
+    makeMatch(tournamentId, seeds[0].team_id, seeds[1].team_id, "final", court, 1, bracket),
+  ];
 }
 
-// 3-4 teams advancing → Semi-finals (with possible byes)
+// 3-4 teams advancing → Semi-finals (with possible internal byes)
 function buildSFMatches(
-  groupStandings: GroupStanding[],
-  _byeGroupIds: string[],
+  bracketStandings: GroupStanding[],
   courts: Court[],
   tournamentId: string,
-  hasBronze: boolean
+  bracket: string
 ): GeneratedKOMatch[] {
   const matches: GeneratedKOMatch[] = [];
-  const totalAdvancing = groupStandings.reduce((s, g) => s + g.standings.length, 0);
+  const totalAdvancing = bracketStandings.reduce((s, g) => s + g.standings.length, 0);
   const bracketSize = nextPowerOf2(totalAdvancing); // always 4 here
   const internalByeCount = bracketSize - totalAdvancing;
 
-  // Byes go to the top seeds automatically (highest rank first).
-  const allTeams = collectSeeds(groupStandings, Math.ceil(totalAdvancing / groupStandings.length));
+  const allTeams = collectSeeds(
+    bracketStandings,
+    Math.ceil(totalAdvancing / bracketStandings.length)
+  );
   const byeTeams = allTeams.slice(0, internalByeCount);
   const byeSet = new Set(byeTeams.map((t) => t.team_id));
   const playingTeams = allTeams.filter((t) => !byeSet.has(t.team_id));
 
-  // SF slots: 2 matches
-  // Bye teams take SF slots directly; playing teams fill QF-like slots
-  // With 3 advancing (1 bye): SF1 = bye vs QF winner, SF2 = team2 vs team3
-  // With 4 advancing (0 byes): SF1 = seed1 vs seed4, SF2 = seed2 vs seed3
   if (internalByeCount === 0) {
-    // All 4 play, straight SF
     const court0 = courts[0] ?? null;
     const court1 = courts[1] ?? courts[0] ?? null;
-    matches.push(makeMatch(tournamentId, allTeams[0].team_id, allTeams[3].team_id, "semi_final", court0, 1));
-    matches.push(makeMatch(tournamentId, allTeams[1].team_id, allTeams[2].team_id, "semi_final", court1, 1));
+    matches.push(
+      makeMatch(tournamentId, allTeams[0].team_id, allTeams[3].team_id, "semi_final", court0, 1, bracket)
+    );
+    matches.push(
+      makeMatch(tournamentId, allTeams[1].team_id, allTeams[2].team_id, "semi_final", court1, 1, bracket)
+    );
   } else {
-    // byeCount > 0: playing teams do a "play-in" round; result feeds SF
-    // We model play-in as quarter_final stage even though bracket is smaller
+    // Play-in modeled as quarter_final stage; winners feed the SF.
     for (let i = 0; i < playingTeams.length - 1; i += 2) {
-      const court = courts[i % courts.length] ?? null;
-      matches.push(makeMatch(tournamentId, playingTeams[i].team_id, playingTeams[i + 1].team_id, "quarter_final", court, 1));
+      const court = courts[i % Math.max(1, courts.length)] ?? null;
+      matches.push(
+        makeMatch(
+          tournamentId,
+          playingTeams[i].team_id,
+          playingTeams[i + 1].team_id,
+          "quarter_final",
+          court,
+          1,
+          bracket
+        )
+      );
     }
   }
   return matches;
@@ -125,52 +213,74 @@ function buildSFMatches(
 
 // 5+ teams advancing → Quarter-finals (with possible byes for top seeds)
 function buildQFMatches(
-  groupStandings: GroupStanding[],
-  _byeGroupIds: string[],
+  bracketStandings: GroupStanding[],
   courts: Court[],
   tournamentId: string,
-  hasBronze: boolean
+  _hasBronze: boolean,
+  bracket: string
 ): GeneratedKOMatch[] {
   const matches: GeneratedKOMatch[] = [];
-  const totalAdvancing = groupStandings.reduce((s, g) => s + g.standings.length, 0);
-  // Target an 8-team QF bracket. If totalAdvancing > 8, the top seeds get byes
-  // into QF; the rest play a play-in round to fill the remaining QF slots.
+  const totalAdvancing = bracketStandings.reduce((s, g) => s + g.standings.length, 0);
   const qfSlots = 8;
-  const playInMatches = totalAdvancing - qfSlots; // negative means byes needed
+  const playInMatches = totalAdvancing - qfSlots;
   const internalByeCount = playInMatches < 0 ? -playInMatches : 0;
   const playInCount = playInMatches > 0 ? playInMatches * 2 : 0;
 
-  const allTeams = collectSeeds(groupStandings, Math.max(...groupStandings.map((g) => g.standings.length)));
+  const allTeams = collectSeeds(
+    bracketStandings,
+    Math.max(...bracketStandings.map((g) => g.standings.length))
+  );
 
-  // Byes go to the top seeds automatically.
   const byeTeams = allTeams.slice(0, internalByeCount);
   const byeSet = new Set(byeTeams.map((t) => t.team_id));
-  // Play-in teams are the lowest seeds.
   const playInTeams = playInCount > 0 ? allTeams.slice(allTeams.length - playInCount) : [];
   const playInSet = new Set(playInTeams.map((t) => t.team_id));
-  const playingTeams = allTeams.filter((t) => !byeSet.has(t.team_id) && !playInSet.has(t.team_id));
+  const playingTeams = allTeams.filter(
+    (t) => !byeSet.has(t.team_id) && !playInSet.has(t.team_id)
+  );
 
   if (playInTeams.length > 0) {
-    // Play-in round: lowest seeds play each other to earn QF spots.
     for (let i = 0; i < playInTeams.length - 1; i += 2) {
-      const court = courts[i % courts.length] ?? null;
-      matches.push(makeMatch(tournamentId, playInTeams[i].team_id, playInTeams[i + 1].team_id, "quarter_final", court, 1));
+      const court = courts[i % Math.max(1, courts.length)] ?? null;
+      matches.push(
+        makeMatch(
+          tournamentId,
+          playInTeams[i].team_id,
+          playInTeams[i + 1].team_id,
+          "quarter_final",
+          court,
+          1,
+          bracket
+        )
+      );
     }
   } else {
-    // Classic QF seeding: seed[0] vs seed[n-1], seed[1] vs seed[n-2], etc.
     const n = playingTeams.length;
     for (let i = 0; i < Math.floor(n / 2); i++) {
-      const court = courts[i % courts.length] ?? null;
-      matches.push(makeMatch(tournamentId, playingTeams[i].team_id, playingTeams[n - 1 - i].team_id, "quarter_final", court, 1));
+      const court = courts[i % Math.max(1, courts.length)] ?? null;
+      matches.push(
+        makeMatch(
+          tournamentId,
+          playingTeams[i].team_id,
+          playingTeams[n - 1 - i].team_id,
+          "quarter_final",
+          court,
+          1,
+          bracket
+        )
+      );
     }
   }
   return matches;
 }
 
-// Given completed KO matches from the current round and any teams that had
-// byes (advanced without playing this round), generate the next round.
-// Bye teams + winners are cross-paired (top seed vs lowest survivor).
-// If hasBronze and we're going from 2 semis to the Final, generate bronze.
+// Given completed KO matches from the current round of a SINGLE bracket and
+// any teams that had byes (advanced without playing this round), generate the
+// next round. The new matches inherit the bracket from `completedMatches`.
+//
+// The host is responsible for partitioning matches by bracket and calling this
+// once per bracket; mixing brackets in the same call will tag the new matches
+// with the first bracket seen.
 export function generateNextKORound(
   completedMatches: TournamentMatch[],
   byeTeamIds: string[],
@@ -178,6 +288,9 @@ export function generateNextKORound(
   tournamentId: string,
   hasBronze: boolean
 ): GeneratedKOMatch[] {
+  if (completedMatches.length === 0 && byeTeamIds.length === 0) return [];
+  const bracket = completedMatches[0]?.bracket ?? null;
+
   const winners = completedMatches.map((m) => {
     const t1Wins = (m.score_team1 ?? 0) > (m.score_team2 ?? 0);
     return t1Wins ? m.team1_id : m.team2_id;
@@ -192,30 +305,29 @@ export function generateNextKORound(
   const n = entrants.length;
   if (n < 2) return [];
 
-  // Stage from entrant count, not previous label — handles play-in rounds
-  // (e.g. 9-16 advancing teams) correctly.
   const stage: MatchStage = n === 2 ? "final" : n <= 4 ? "semi_final" : "quarter_final";
 
   const matches: GeneratedKOMatch[] = [];
   const roundNumber = (completedMatches[0]?.round_number ?? 0) + 1;
 
-  // Cross-pair: entrant[0] vs entrant[n-1], entrant[1] vs entrant[n-2], …
   for (let i = 0; i < Math.floor(n / 2); i++) {
-    const court = courts[i % courts.length] ?? null;
-    matches.push(makeMatch(tournamentId, entrants[i], entrants[n - 1 - i], stage, court, roundNumber));
+    const court = courts[i % Math.max(1, courts.length)] ?? null;
+    matches.push(
+      makeMatch(tournamentId, entrants[i], entrants[n - 1 - i], stage, court, roundNumber, bracket)
+    );
   }
 
-  // Bronze: only when going from exactly 2 semi-final matches to the Final.
   if (hasBronze && stage === "final" && completedMatches.length === 2 && losers.length >= 2) {
     const bronzeCourt = courts[Math.floor(courts.length / 2)] ?? courts[0] ?? null;
-    matches.push(makeMatch(tournamentId, losers[0], losers[1], "bronze", bronzeCourt, roundNumber));
+    matches.push(
+      makeMatch(tournamentId, losers[0], losers[1], "bronze", bronzeCourt, roundNumber, bracket)
+    );
   }
 
   return matches;
 }
 
 // Byes are assigned automatically to top seeds — no host selection needed.
-// This always returns 0 so the UI skips the group-selection step entirely.
 export function byeCount(_groupStandings: GroupStanding[]): number {
   return 0;
 }
@@ -223,8 +335,6 @@ export function byeCount(_groupStandings: GroupStanding[]): number {
 type SeedEntry = { team_id: string; groupId: string; rank: number };
 
 function collectSeeds(groupStandings: GroupStanding[], advancesPerGroup: number): SeedEntry[] {
-  // Interleave by rank: all 1st places, then all 2nd places, etc.
-  // Within each rank, order by group sort order (groupStandings is already sorted).
   const result: SeedEntry[] = [];
   for (let rank = 0; rank < advancesPerGroup; rank++) {
     for (const g of groupStandings) {
@@ -242,7 +352,8 @@ function makeMatch(
   team2Id: string,
   stage: MatchStage,
   court: Court | null,
-  roundNumber: number
+  roundNumber: number,
+  bracket: string | null
 ): GeneratedKOMatch {
   return {
     tournament_id: tournamentId,
@@ -255,10 +366,11 @@ function makeMatch(
     score_team2: null,
     status: "scheduled",
     stage,
+    bracket,
   };
 }
 
-// Returns the KO stage label from a set of KO matches.
+// Returns the KO stage label from a set of KO matches in a single bracket.
 export function currentKOStage(koMatches: TournamentMatch[]): MatchStage | null {
   const incomplete = koMatches.filter((m) => m.status !== "completed" && m.stage !== "bronze");
   if (incomplete.length > 0) return incomplete[0].stage;

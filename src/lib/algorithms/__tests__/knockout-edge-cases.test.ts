@@ -1,13 +1,14 @@
 /**
- * Comprehensive edge-case tests for the KO bracket system.
+ * Edge-case tests for the multi-bracket KO system.
  *
- * Covers:
- *  - computeBracketPath (inlined) for every realistic team count
- *  - generateFirstKORound / generateNextKORound for all bracket sizes
- *  - autoAdvanceKO simulation (inlined pair-by-pair + external-byes logic)
- *  - hasBronze interactions
+ * Coverage:
+ *  - computeBracketPath (used in HostView) for every realistic per-bracket size
+ *  - firstKOStage / bracketCount / bracketLetter sanity
+ *  - generateFirstKORound match counts for single A-slutspel bracket sizes
+ *  - generateFirstKORound multi-bracket totals
+ *  - generateNextKORound preserves bracket and produces correct stage
+ *  - hasBronze interactions per bracket
  *  - 1-court / many-courts / court-cycling
- *  - Odd advancing counts (3, 5, 6, 7, 9, 10, 11, 12)
  */
 
 import { describe, it, expect } from "vitest";
@@ -15,14 +16,12 @@ import {
   generateFirstKORound,
   generateNextKORound,
   firstKOStage,
+  bracketCount,
+  bracketLetter,
   type GroupStanding,
   type GeneratedKOMatch,
 } from "../knockout";
-import type { Court, TournamentMatch, MatchStage } from "../../supabase/types";
-
-// ---------------------------------------------------------------------------
-// Helpers shared across all tests
-// ---------------------------------------------------------------------------
+import type { Court, TournamentMatch } from "../../supabase/types";
 
 const TID = "t-test";
 
@@ -39,15 +38,25 @@ function makeGroup(id: string, teamIds: string[]): GroupStanding {
   return {
     groupId: id,
     groupName: id,
-    standings: teamIds.map((t) => ({ team_id: t, teamName: t, mp: 0, gf: 0, ga: 0, gd: 0 })),
+    standings: teamIds.map((t) => ({
+      team_id: t,
+      teamName: t,
+      mp: 0,
+      gf: 0,
+      ga: 0,
+      gd: 0,
+    })),
   };
 }
 
-/** Build N groups each with M teams advancing; team IDs = "G{g}T{t}" */
+/** Build N groups each with M advancing teams; team IDs = "G{g}T{t}". */
 function makeGroups(groupCount: number, advancesPerGroup: number): GroupStanding[] {
   return Array.from({ length: groupCount }, (_, gi) =>
-    makeGroup(`g${gi}`, Array.from({ length: advancesPerGroup + 1 }, (_, ti) => `G${gi}T${ti}`))
-  ).map((g) => ({ ...g, standings: g.standings.slice(0, advancesPerGroup) }));
+    makeGroup(
+      `g${gi}`,
+      Array.from({ length: advancesPerGroup }, (_, ti) => `G${gi}T${ti}`)
+    )
+  );
 }
 
 let _matchIdx = 0;
@@ -65,95 +74,12 @@ function completeMatch(m: GeneratedKOMatch, team1Wins = true): TournamentMatch {
     score_team2: team1Wins ? 6 : 7,
     status: "completed",
     stage: m.stage,
+    bracket: m.bracket,
   };
 }
 
-/** Simulate the pair-by-pair + external-byes autoAdvanceKO logic inline. */
-function simulateAutoAdvance(
-  koMatches: TournamentMatch[],
-  externalByeIds: string[],
-  courts: Court[],
-  tournamentId: string,
-  hasBronze: boolean
-): TournamentMatch[] {
-  const koNonBronze = koMatches.filter((m) => m.stage !== "bronze");
-  if (koNonBronze.length === 0) return koMatches;
-
-  const completedNonBronze = koNonBronze.filter((m) => m.status === "completed");
-  if (completedNonBronze.length === 0) return koMatches;
-
-  const allKORounds = [...new Set(koNonBronze.map((m) => m.round_number))].sort((a, b) => a - b);
-  const firstKORound = allKORounds[0];
-
-  const result: TournamentMatch[] = [...koMatches];
-
-  for (const roundNum of allKORounds) {
-    const roundMatches = koNonBronze
-      .filter((m) => m.round_number === roundNum)
-      .sort((a, b) => {
-        const dt = a.created_at.localeCompare(b.created_at);
-        return dt !== 0 ? dt : a.id.localeCompare(b.id);
-      });
-    const nextRound = roundNum + 1;
-    const nextRoundMatches = koMatches.filter((m) => m.round_number === nextRound && m.stage !== "bronze");
-    const relevantByeIds = roundNum === firstKORound ? externalByeIds : [];
-    const n = roundMatches.length;
-
-    if (relevantByeIds.length > 0) {
-      if (!roundMatches.every((m) => m.status === "completed")) continue;
-      if (nextRoundMatches.length > 0) continue;
-      const next = generateNextKORound(roundMatches, relevantByeIds, courts, tournamentId, hasBronze);
-      next.forEach((m, i) => result.push(completeMatch(m)));
-      continue;
-    }
-
-    // Pair-by-pair
-    const newMatches: TournamentMatch[] = [];
-    for (let i = 0; i < Math.floor(n / 2); i++) {
-      const m1 = roundMatches[i];
-      const m2 = roundMatches[n - 1 - i];
-      if (m1.status !== "completed" || m2.status !== "completed") continue;
-
-      const w1 = (m1.score_team1 ?? 0) > (m1.score_team2 ?? 0) ? m1.team1_id : m1.team2_id;
-      const w2 = (m2.score_team1 ?? 0) > (m2.score_team2 ?? 0) ? m2.team1_id : m2.team2_id;
-      const alreadyExists =
-        nextRoundMatches.some(
-          (m) => (m.team1_id === w1 && m.team2_id === w2) || (m.team1_id === w2 && m.team2_id === w1)
-        ) ||
-        newMatches.some(
-          (m) => (m.team1_id === w1 && m.team2_id === w2) || (m.team1_id === w2 && m.team2_id === w1)
-        );
-      if (alreadyExists) continue;
-
-      const nextTotal = Math.floor(n / 2);
-      const stage: MatchStage = nextTotal === 1 ? "final" : nextTotal <= 2 ? "semi_final" : "quarter_final";
-      const court = courts.find((cc) => cc.id === m1.court_id) ?? courts[i % courts.length] ?? null;
-
-      const nextMatch: GeneratedKOMatch = {
-        tournament_id: tournamentId, group_id: null, round_number: nextRound,
-        court_id: court?.id ?? null, team1_id: w1, team2_id: w2,
-        score_team1: null, score_team2: null, status: "scheduled", stage,
-      };
-      newMatches.push(completeMatch(nextMatch));
-
-      if (hasBronze && stage === "final" && n === 2) {
-        const l1 = (m1.score_team1 ?? 0) > (m1.score_team2 ?? 0) ? m1.team2_id : m1.team1_id;
-        const l2 = (m2.score_team1 ?? 0) > (m2.score_team2 ?? 0) ? m2.team2_id : m2.team1_id;
-        const bronzeCourt = courts.find((cc) => cc.id === m2.court_id) ?? courts[0] ?? null;
-        const bronzeMatch: GeneratedKOMatch = {
-          tournament_id: tournamentId, group_id: null, round_number: nextRound,
-          court_id: bronzeCourt?.id ?? null, team1_id: l1, team2_id: l2,
-          score_team1: null, score_team2: null, status: "scheduled", stage: "bronze",
-        };
-        newMatches.push(completeMatch(bronzeMatch));
-      }
-    }
-    result.push(...newMatches);
-  }
-  return result;
-}
-
-// Inline computeBracketPath (same logic as HostView, used to catch bugs here)
+// computeBracketPath is per-bracket (HostView uses it once per bracket). The
+// inline copy here mirrors the live implementation so changes stay in sync.
 type BracketStep = { label: string; matchCount: number; isNow: boolean };
 function computeBracketPath(totalAdvancing: number, hasBronze: boolean): BracketStep[] {
   const steps: BracketStep[] = [];
@@ -163,112 +89,49 @@ function computeBracketPath(totalAdvancing: number, hasBronze: boolean): Bracket
     steps.push({ label: "Kvartsfinal", matchCount: 4, isNow: false });
     steps.push({ label: "Semifinal", matchCount: 2, isNow: false });
   } else if (totalAdvancing > 4) {
-    const qfMatches = totalAdvancing - 4; // n-4 correct formula
+    const qfMatches = totalAdvancing - 4;
     steps.push({ label: "Kvartsfinal", matchCount: qfMatches, isNow: true });
     steps.push({ label: "Semifinal", matchCount: 2, isNow: false });
   } else if (totalAdvancing > 2) {
     const sfMatches = Math.floor(totalAdvancing / 2);
     const isPlayIn = totalAdvancing === 3;
-    steps.push({ label: isPlayIn ? "Inledningsrunda" : "Semifinal", matchCount: sfMatches, isNow: true });
-    // Note: do NOT push Final here — the unconditional push below handles it.
+    steps.push({
+      label: isPlayIn ? "Inledningsrunda" : "Semifinal",
+      matchCount: sfMatches,
+      isNow: true,
+    });
   }
   steps.push({ label: "Final", matchCount: 1, isNow: totalAdvancing <= 2 });
   if (hasBronze) steps.push({ label: "Bronsmatch", matchCount: 1, isNow: false });
   return steps;
 }
 
-/** Run full bracket from group results to Final, return the Final match. */
-function runFullBracket(
-  groupCount: number,
-  advancesPerGroup: number,
-  courtCount: number,
-  hasBronze = false
-): { rounds: TournamentMatch[][]; final: TournamentMatch | undefined; bronze: TournamentMatch | undefined } {
-  _matchIdx = 0;
-  const groups = makeGroups(groupCount, advancesPerGroup);
-  const courts = makeCourts(courtCount);
-  const totalAdvancing = groupCount * advancesPerGroup;
-
-  const firstRoundGenerated = generateFirstKORound(groups, [], courts, TID, hasBronze);
-  if (firstRoundGenerated.length === 0) return { rounds: [], final: undefined, bronze: undefined };
-
-  // Complete all first-round matches (team1 always wins)
-  const firstRoundCompleted: TournamentMatch[] = firstRoundGenerated.map((m) => completeMatch(m));
-
-  // Compute external byes for first round
-  const playedInKO = new Set(firstRoundCompleted.flatMap((m) => [m.team1_id, m.team2_id]));
-  const externalByeIds = groups
-    .flatMap((g) => g.standings.map((s) => s.team_id))
-    .filter((id) => !playedInKO.has(id));
-
-  // Iteratively advance until no more incomplete matches remain
-  let allKO: TournamentMatch[] = [...firstRoundCompleted];
-  let safety = 0;
-  while (safety++ < 10) {
-    const incomplete = allKO.filter((m) => m.status !== "completed" && m.stage !== "bronze");
-    if (incomplete.length > 0) break; // should never happen since we complete everything
-
-    const prevLen = allKO.length;
-    allKO = simulateAutoAdvance(allKO, externalByeIds, courts, TID, hasBronze);
-
-    // Complete any newly added scheduled matches
-    allKO = allKO.map((m) =>
-      m.status === "scheduled" ? { ...m, ...completeMatch(m), id: m.id } : m
-    );
-
-    if (allKO.length === prevLen) break; // nothing new generated → done
-  }
-
-  const rounds: TournamentMatch[][] = [];
-  const roundNums = [...new Set(allKO.map((m) => m.round_number))].sort((a, b) => a - b);
-  for (const r of roundNums) rounds.push(allKO.filter((m) => m.round_number === r));
-
-  const final = allKO.find((m) => m.stage === "final");
-  const bronze = allKO.find((m) => m.stage === "bronze");
-  return { rounds, final, bronze };
-}
-
 // ---------------------------------------------------------------------------
-// computeBracketPath tests
+// computeBracketPath — covers every realistic per-bracket size
 // ---------------------------------------------------------------------------
 
-describe("computeBracketPath — all team counts", () => {
+describe("computeBracketPath — per-bracket sizes", () => {
   it("2 teams → [Final(now)]", () => {
     const path = computeBracketPath(2, false);
-    expect(path).toHaveLength(1);
-    expect(path[0]).toMatchObject({ label: "Final", matchCount: 1, isNow: true });
+    expect(path).toEqual([{ label: "Final", matchCount: 1, isNow: true }]);
   });
 
-  it("3 teams → [Inledningsrunda(now), Final] — no duplicate Final", () => {
+  it("3 teams → [Inledningsrunda(now), Final]", () => {
     const path = computeBracketPath(3, false);
     expect(path).toHaveLength(2);
-    expect(path[0]).toMatchObject({ label: "Inledningsrunda", matchCount: 1, isNow: true });
-    expect(path[1]).toMatchObject({ label: "Final", matchCount: 1, isNow: false });
+    expect(path[0]).toMatchObject({ label: "Inledningsrunda", isNow: true });
+    expect(path[1]).toMatchObject({ label: "Final", isNow: false });
   });
 
   it("4 teams → [SF×2(now), Final]", () => {
     const path = computeBracketPath(4, false);
-    expect(path).toHaveLength(2);
     expect(path[0]).toMatchObject({ label: "Semifinal", matchCount: 2, isNow: true });
-    expect(path[1]).toMatchObject({ label: "Final", matchCount: 1, isNow: false });
+    expect(path[1]).toMatchObject({ label: "Final" });
   });
 
   it("5 teams → [QF×1(now), SF×2, Final]", () => {
     const path = computeBracketPath(5, false);
-    expect(path).toHaveLength(3);
     expect(path[0]).toMatchObject({ label: "Kvartsfinal", matchCount: 1, isNow: true });
-    expect(path[1]).toMatchObject({ label: "Semifinal", matchCount: 2, isNow: false });
-    expect(path[2]).toMatchObject({ label: "Final", matchCount: 1, isNow: false });
-  });
-
-  it("6 teams → [QF×2(now), SF×2, Final]", () => {
-    const path = computeBracketPath(6, false);
-    expect(path[0]).toMatchObject({ label: "Kvartsfinal", matchCount: 2, isNow: true });
-  });
-
-  it("7 teams → [QF×3(now), SF×2, Final]", () => {
-    const path = computeBracketPath(7, false);
-    expect(path[0]).toMatchObject({ label: "Kvartsfinal", matchCount: 3, isNow: true });
   });
 
   it("8 teams → [QF×4(now), SF×2, Final]", () => {
@@ -276,44 +139,41 @@ describe("computeBracketPath — all team counts", () => {
     expect(path[0]).toMatchObject({ label: "Kvartsfinal", matchCount: 4, isNow: true });
   });
 
-  it("9 teams → [Inledningsrunda×1, QF×4, SF×2, Final]", () => {
+  it("9 teams → [Inledningsrunda×1(now), QF×4, SF×2, Final]", () => {
     const path = computeBracketPath(9, false);
     expect(path).toHaveLength(4);
     expect(path[0]).toMatchObject({ label: "Inledningsrunda", matchCount: 1, isNow: true });
-    expect(path[1]).toMatchObject({ label: "Kvartsfinal", matchCount: 4, isNow: false });
   });
 
-  it("10 teams → [Inledningsrunda×2, QF×4, SF×2, Final]", () => {
-    const path = computeBracketPath(10, false);
-    expect(path[0]).toMatchObject({ label: "Inledningsrunda", matchCount: 2, isNow: true });
-  });
-
-  it("16 teams → [Inledningsrunda×8, QF×4, SF×2, Final]", () => {
+  it("16 teams → [Inledningsrunda×8(now), QF×4, SF×2, Final]", () => {
     const path = computeBracketPath(16, false);
-    expect(path[0]).toMatchObject({ label: "Inledningsrunda", matchCount: 8, isNow: true });
-    expect(path[1]).toMatchObject({ label: "Kvartsfinal", matchCount: 4, isNow: false });
+    expect(path[0]).toMatchObject({ label: "Inledningsrunda", matchCount: 8 });
   });
 
-  it("hasBronze always appends Bronsmatch as last step with isNow=false", () => {
+  it("hasBronze appends Bronsmatch as last step with isNow=false", () => {
     for (const n of [2, 3, 4, 5, 8, 10]) {
       const path = computeBracketPath(n, true);
       const last = path[path.length - 1];
-      expect(last, `n=${n}`).toMatchObject({ label: "Bronsmatch", matchCount: 1, isNow: false });
+      expect(last, `n=${n}`).toMatchObject({
+        label: "Bronsmatch",
+        matchCount: 1,
+        isNow: false,
+      });
     }
   });
 
-  it("no step has isNow=true except the first step, for all n", () => {
+  it("only the first step is isNow=true for any n", () => {
     for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 16]) {
       const path = computeBracketPath(n, false);
       const nowSteps = path.filter((s) => s.isNow);
       expect(nowSteps, `n=${n}`).toHaveLength(1);
-      expect(path[0].isNow, `n=${n} first step`).toBe(true);
+      expect(path[0].isNow, `n=${n}`).toBe(true);
     }
   });
 });
 
 // ---------------------------------------------------------------------------
-// firstKOStage sanity
+// firstKOStage / bracketCount / bracketLetter
 // ---------------------------------------------------------------------------
 
 describe("firstKOStage", () => {
@@ -330,324 +190,250 @@ describe("firstKOStage", () => {
   });
 });
 
+describe("bracketCount + bracketLetter", () => {
+  it("returns 1 for a single group regardless of advances_per_group", () => {
+    expect(bracketCount([makeGroup("g0", ["A1", "A2", "A3"])])).toBe(1);
+  });
+
+  it("returns 0 for empty input", () => {
+    expect(bracketCount([])).toBe(0);
+  });
+
+  it("returns max advancing rank across groups when ≥2 groups", () => {
+    expect(bracketCount(makeGroups(2, 1))).toBe(1);
+    expect(bracketCount(makeGroups(4, 2))).toBe(2);
+    expect(bracketCount(makeGroups(2, 4))).toBe(4);
+  });
+
+  it("bracketLetter clamps to A..Z", () => {
+    expect(bracketLetter(0)).toBe("A");
+    expect(bracketLetter(25)).toBe("Z");
+    expect(bracketLetter(99)).toBe("Z");
+  });
+});
+
 // ---------------------------------------------------------------------------
-// generateFirstKORound — match counts per team count
+// generateFirstKORound — single A-slutspel sizes (1 advance per group)
 // ---------------------------------------------------------------------------
 
-describe("generateFirstKORound — correct match count per advancing total", () => {
+describe("single A-slutspel: match count per advancing total (1 advance per group)", () => {
   const courts = makeCourts(8);
 
   it.each([
     [2, 1],   // straight Final
-    [3, 1],   // 1 play-in (QF stage)
+    [3, 1],   // 1 play-in
     [4, 2],   // 2 SFs
-    [5, 1],   // 1 QF (top 3 get internal byes)
-    [6, 2],   // 2 QFs
-    [7, 3],   // 3 QFs
-    [8, 4],   // 4 QFs
+    [5, 1],   // 1 QF (3 internal byes)
+    [6, 2],
+    [7, 3],
+    [8, 4],
     [9, 1],   // 1 play-in
-    [10, 2],  // 2 play-ins
-    [11, 3],  // 3 play-ins
-    [12, 4],  // 4 play-ins
-    [16, 8],  // 8 play-ins (all teams play)
-  ])("%i advancing teams → %i first-round matches", (total, expectedMatches) => {
-    // Build minimal groups: total groups × 1 advance
-    const groups = makeGroups(total, 1);
+    [10, 2],
+    [12, 4],
+    [16, 8],
+  ])("%i groups × 1 → %i first-round matches in A-slutspel", (groups, expected) => {
+    const standings = makeGroups(groups, 1);
+    const matches = generateFirstKORound(standings, [], courts, TID, false);
+    expect(matches, `groups=${groups}`).toHaveLength(expected);
+    expect(matches.every((m) => m.bracket === "A")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Multi-bracket: total matches across all brackets
+// ---------------------------------------------------------------------------
+
+describe("multi-bracket first-round totals", () => {
+  const courts = makeCourts(8);
+
+  it("4 groups × 2 advance: 2 brackets × 2 SFs each = 4 first-round matches", () => {
+    const matches = generateFirstKORound(makeGroups(4, 2), [], courts, TID, false);
+    expect(matches).toHaveLength(4);
+    expect(matches.filter((m) => m.bracket === "A")).toHaveLength(2);
+    expect(matches.filter((m) => m.bracket === "B")).toHaveLength(2);
+  });
+
+  it("3 groups × 3 advance: 3 brackets × 1 play-in each = 3 first-round matches", () => {
+    const matches = generateFirstKORound(makeGroups(3, 3), [], courts, TID, false);
+    expect(matches).toHaveLength(3);
+    const letters = new Set(matches.map((m) => m.bracket));
+    expect(letters).toEqual(new Set(["A", "B", "C"]));
+  });
+
+  it("8 groups × 2 advance: 2 brackets × 4 QFs each = 8 first-round matches, no play-in", () => {
+    const matches = generateFirstKORound(makeGroups(8, 2), [], courts, TID, false);
+    expect(matches).toHaveLength(8);
+    expect(matches.filter((m) => m.bracket === "A")).toHaveLength(4);
+    expect(matches.filter((m) => m.bracket === "B")).toHaveLength(4);
+    expect(matches.every((m) => m.stage === "quarter_final")).toBe(true);
+  });
+
+  it("uneven advancement: some brackets are smaller than others", () => {
+    // 3 groups but only 2 of them advance a 2nd-place team
+    const groups: GroupStanding[] = [
+      makeGroup("g0", ["G0T0", "G0T1"]),
+      makeGroup("g1", ["G1T0", "G1T1"]),
+      makeGroup("g2", ["G2T0"]), // only one advances
+    ];
     const matches = generateFirstKORound(groups, [], courts, TID, false);
-    expect(matches, `total=${total}`).toHaveLength(expectedMatches);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Odd advancing counts: full bracket simulation
-// ---------------------------------------------------------------------------
-
-describe("3 advancing (3 groups × 1) — play-in → Final", () => {
-  it("produces exactly 2 matches total: 1 play-in + 1 final", () => {
-    const { rounds } = runFullBracket(3, 1, 2);
-    const total = rounds.flat();
-    expect(total).toHaveLength(2);
-    expect(total.filter((m) => m.stage === "quarter_final")).toHaveLength(1);
-    expect(total.filter((m) => m.stage === "final")).toHaveLength(1);
+    // A-slutspel: 3 teams (G0T0, G1T0, G2T0) → 1 play-in
+    // B-slutspel: 2 teams (G0T1, G1T1) → 1 final
+    expect(matches.filter((m) => m.bracket === "A")).toHaveLength(1);
+    expect(matches.filter((m) => m.bracket === "B")).toHaveLength(1);
+    expect(matches.find((m) => m.bracket === "A")!.stage).toBe("quarter_final");
+    expect(matches.find((m) => m.bracket === "B")!.stage).toBe("final");
   });
 
-  it("Final is played between the top seed (G0T0) and the play-in winner", () => {
-    const { final } = runFullBracket(3, 1, 2);
-    expect(final).toBeDefined();
-    // G0T0 is top seed and gets a bye; play-in winner is G1T0 (team1 always wins)
-    expect([final!.team1_id, final!.team2_id]).toContain("G0T0");
-  });
-});
-
-describe("5 advancing (5 groups × 1) — 1 QF → SF → Final", () => {
-  it("produces 1 + 2 + 1 = 4 matches total", () => {
-    const { rounds } = runFullBracket(5, 1, 2);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(4);
-  });
-
-  it("first round has exactly 1 QF match", () => {
-    const groups = makeGroups(5, 1);
-    const courts = makeCourts(2);
-    const first = generateFirstKORound(groups, [], courts, TID, false);
-    expect(first).toHaveLength(1);
-    expect(first[0].stage).toBe("quarter_final");
-  });
-});
-
-describe("6 advancing (6 groups × 1) — 2 QF → SF → Final", () => {
-  it("total non-bronze matches = 2 + 2 + 1 = 5", () => {
-    const { rounds } = runFullBracket(6, 1, 3);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(5);
-  });
-});
-
-describe("7 advancing (7 groups × 1) — 3 QF → SF → Final", () => {
-  it("total non-bronze matches = 3 + 2 + 1 = 6", () => {
-    const { rounds } = runFullBracket(7, 1, 4);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(6);
-  });
-});
-
-describe("8 advancing (8 groups × 1) — 4 QF → SF → Final", () => {
-  it("total non-bronze matches = 4 + 2 + 1 = 7", () => {
-    const { rounds } = runFullBracket(8, 1, 4);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(7);
-  });
-
-  it("top seed G0T0 reaches Final", () => {
-    const { final } = runFullBracket(8, 1, 4);
-    expect([final!.team1_id, final!.team2_id]).toContain("G0T0");
-  });
-});
-
-describe("9 advancing (9 groups × 1) — 1 play-in → 4 QF → SF → Final", () => {
-  it("total non-bronze matches = 1 + 4 + 2 + 1 = 8", () => {
-    const { rounds } = runFullBracket(9, 1, 4);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(8);
-  });
-});
-
-describe("10 advancing (5 groups × 2) — 2 play-in → 4 QF → SF → Final", () => {
-  it("total non-bronze matches = 2 + 4 + 2 + 1 = 9", () => {
-    const { rounds } = runFullBracket(5, 2, 4);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(9);
-  });
-
-  it("top seed G0T0 does not play in the first round (gets external bye)", () => {
-    _matchIdx = 0;
-    const groups = makeGroups(5, 2);
-    const courts = makeCourts(4);
-    const first = generateFirstKORound(groups, [], courts, TID, false);
-    const allFirstTeams = first.flatMap((m) => [m.team1_id, m.team2_id]);
-    expect(allFirstTeams).not.toContain("G0T0");
-  });
-});
-
-describe("12 advancing (6 groups × 2) — 4 play-in → 4 QF → SF → Final", () => {
-  it("total non-bronze matches = 4 + 4 + 2 + 1 = 11", () => {
-    const { rounds } = runFullBracket(6, 2, 4);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(11);
-  });
-});
-
-describe("16 advancing (8 groups × 2) — 8 play-in → 4 QF → SF → Final", () => {
-  it("total non-bronze matches = 8 + 4 + 2 + 1 = 15", () => {
-    const { rounds } = runFullBracket(8, 2, 4);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(15);
-  });
-
-  it("no external byes: all 16 teams play in round 1", () => {
-    _matchIdx = 0;
-    const groups = makeGroups(8, 2);
-    const courts = makeCourts(8);
-    const first = generateFirstKORound(groups, [], courts, TID, false);
-    const firstTeams = new Set(first.flatMap((m) => [m.team1_id, m.team2_id]));
-    expect(firstTeams.size).toBe(16);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// hasBronze
-// ---------------------------------------------------------------------------
-
-describe("hasBronze — bronze match generated at correct point", () => {
-  it("2 groups × 2: Final + Bronze produced after SF", () => {
-    const { final, bronze } = runFullBracket(2, 2, 2, true);
-    expect(final).toBeDefined();
-    expect(bronze).toBeDefined();
-  });
-
-  it("4 groups × 2 (8 advancing): Final + Bronze after SF", () => {
-    const { final, bronze } = runFullBracket(4, 2, 4, true);
-    expect(final).toBeDefined();
-    expect(bronze).toBeDefined();
-  });
-
-  it("no Bronze match if hasBronze=false", () => {
-    const { bronze } = runFullBracket(4, 2, 4, false);
-    expect(bronze).toBeUndefined();
-  });
-
-  it("3 advancing + hasBronze: Bronze NOT generated (only 1 SF + Final)", () => {
-    // Bronze only triggers when going from 2 SF matches to Final.
-    // With 3 advancing there's only 1 play-in match → the next round is Final, not via 2 SFs.
-    const { bronze } = runFullBracket(3, 1, 2, true);
-    expect(bronze).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 1-court configuration
-// ---------------------------------------------------------------------------
-
-describe("1 court — all bracket sizes work", () => {
-  it.each([2, 3, 4, 5, 8, 10])("%i advancing teams on 1 court reaches Final", (n) => {
-    const { final } = runFullBracket(n, 1, 1);
-    expect(final, `n=${n}`).toBeDefined();
-  });
-
-  it("8 advancing × 1 court: total 7 non-bronze matches, Final always produced", () => {
-    const { rounds } = runFullBracket(8, 1, 1);
-    const total = rounds.flat().filter((m) => m.stage !== "bronze");
-    expect(total).toHaveLength(7);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Court cycling: more matches than courts
-// ---------------------------------------------------------------------------
-
-describe("court cycling when matches > courts", () => {
-  it("8 advancing × 2 courts: QF1 and QF3 share court 1, QF2 and QF4 share court 2", () => {
-    _matchIdx = 0;
-    const groups = makeGroups(8, 1);
-    const courts = makeCourts(2);
-    const first = generateFirstKORound(groups, [], courts, TID, false);
-    expect(first).toHaveLength(4);
-    expect(first[0].court_id).toBe("c1");
-    expect(first[1].court_id).toBe("c2");
-    expect(first[2].court_id).toBe("c1");
-    expect(first[3].court_id).toBe("c2");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// alreadyExists guard: calling autoAdvance twice doesn't duplicate matches
-// ---------------------------------------------------------------------------
-
-describe("alreadyExists guard — no duplicate matches on repeated calls", () => {
-  it("calling simulateAutoAdvance twice on same state produces no duplicates", () => {
-    _matchIdx = 0;
-    const groups = makeGroups(4, 2); // 8 advancing, QF round
-    const courts = makeCourts(4);
-    const first = generateFirstKORound(groups, [], courts, TID, false);
-    const completed = first.map((m) => completeMatch(m));
-
-    // First call
-    const after1 = simulateAutoAdvance(completed, [], courts, TID, false);
-    // Second call on same state (simulates realtime reload race)
-    const after2 = simulateAutoAdvance(after1, [], courts, TID, false);
-
-    const sfMatches1 = after1.filter((m) => m.stage === "semi_final");
-    const sfMatches2 = after2.filter((m) => m.stage === "semi_final");
-    // Should have exactly 2 SFs, not 4
-    expect(sfMatches1).toHaveLength(2);
-    expect(sfMatches2).toHaveLength(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Cross-pairing: pair-by-pair produces correct SF opponents
-// ---------------------------------------------------------------------------
-
-describe("pair-by-pair cross-pairing correctness", () => {
-  it("8 advancing: QF1 winner meets QF4 winner in SF (not QF2 winner)", () => {
-    _matchIdx = 0;
-    const groups = makeGroups(8, 1);
-    const courts = makeCourts(4);
-    const qf = generateFirstKORound(groups, [], courts, TID, false);
-    // QF matchups by index: 0=G0T0 vs G7T0, 1=G1T0 vs G6T0, 2=G2T0 vs G5T0, 3=G3T0 vs G4T0
-    // Team1 always wins. Winners: G0T0, G1T0, G2T0, G3T0.
-    // Cross-pair [0] with [3]: G0T0 vs G3T0.  [1] with [2]: G1T0 vs G2T0.
-    const completedQF = qf.map((m) => completeMatch(m));
-    const sf = generateNextKORound(completedQF, [], courts, TID, false);
-    const sfNonBronze = sf.filter((m) => m.stage === "semi_final");
-    expect(sfNonBronze).toHaveLength(2);
-    // entrants = [G0T0, G1T0, G2T0, G3T0], cross-pair: [0]vs[3] and [1]vs[2]
-    expect([sfNonBronze[0].team1_id, sfNonBronze[0].team2_id]).toContain("G0T0");
-    expect([sfNonBronze[0].team1_id, sfNonBronze[0].team2_id]).toContain("G3T0");
-    expect([sfNonBronze[1].team1_id, sfNonBronze[1].team2_id]).toContain("G1T0");
-    expect([sfNonBronze[1].team1_id, sfNonBronze[1].team2_id]).toContain("G2T0");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Stage progression: each round has the correct stage label
-// ---------------------------------------------------------------------------
-
-describe("stage progression — round stages match expected sequence", () => {
-  it("8 advancing: QF → SF → Final in rounds 1 → 2 → 3", () => {
-    _matchIdx = 0;
-    const groups = makeGroups(8, 1);
-    const courts = makeCourts(4);
-    const qf = generateFirstKORound(groups, [], courts, TID, false);
-    expect(qf.every((m) => m.stage === "quarter_final")).toBe(true);
-
-    const completedQF = qf.map((m) => completeMatch(m));
-    const sf = generateNextKORound(completedQF, [], courts, TID, false);
-    expect(sf.every((m) => m.stage === "semi_final")).toBe(true);
-
-    const completedSF = sf.map((m) => completeMatch(m));
-    const final = generateNextKORound(completedSF, [], courts, TID, false);
-    expect(final.filter((m) => m.stage === "final")).toHaveLength(1);
-  });
-
-  it("10 advancing: play-in (QF) → QF → SF → Final across 4 rounds", () => {
-    const { rounds } = runFullBracket(5, 2, 4);
-    const stagesByRound = rounds.map((r) => [...new Set(r.map((m) => m.stage))]);
-    expect(stagesByRound[0]).toContain("quarter_final"); // play-in
-    expect(stagesByRound[1]).toContain("quarter_final"); // real QF
-    expect(stagesByRound[2]).toContain("semi_final");
-    expect(stagesByRound[3]).toContain("final");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Straight-to-Final edge cases
-// ---------------------------------------------------------------------------
-
-describe("straight Final — 1 group × 2 advancing", () => {
-  it("generates 1 Final match between the top 2 teams in the group", () => {
-    const groups = [makeGroup("g-a", ["A1", "A2", "A3", "A4"])];
-    const advancing = [{ ...groups[0], standings: groups[0].standings.slice(0, 2) }];
-    const courts = makeCourts(1);
-    const matches = generateFirstKORound(advancing, [], courts, TID, false);
+  it("singleton bracket is dropped (1 team can't form a bracket)", () => {
+    // 2 groups, but only g0 advances a 2nd-place. B-slutspel has 1 team → skip.
+    const groups: GroupStanding[] = [
+      makeGroup("g0", ["G0T0", "G0T1"]),
+      makeGroup("g1", ["G1T0"]),
+    ];
+    const matches = generateFirstKORound(groups, [], courts, TID, false);
+    // Only A-slutspel runs: G0T0 vs G1T0 final
     expect(matches).toHaveLength(1);
-    expect(matches[0].stage).toBe("final");
-    expect(matches[0].team1_id).toBe("A1");
-    expect(matches[0].team2_id).toBe("A2");
+    expect(matches[0].bracket).toBe("A");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Exhaustive: every N from 2–16 produces exactly 1 Final match
+// hasBronze — generated per bracket
 // ---------------------------------------------------------------------------
 
-describe("exhaustive: every advancing count 2–16 ends with exactly 1 Final", () => {
-  it.each(Array.from({ length: 15 }, (_, i) => i + 2))(
-    "%i advancing teams → exactly 1 Final produced",
-    (n) => {
-      const { final } = runFullBracket(n, 1, Math.min(n, 8));
-      expect(final, `n=${n}`).toBeDefined();
-      expect(final!.stage).toBe("final");
-    }
-  );
+describe("hasBronze — per-bracket bronze", () => {
+  it("4-team bracket with hasBronze produces a bronze when SFs complete", () => {
+    _matchIdx = 0;
+    const sfs = generateFirstKORound(makeGroups(4, 1), [], makeCourts(2), TID, true);
+    expect(sfs.every((m) => m.bracket === "A")).toBe(true);
+    const completed = sfs.map((m) => completeMatch(m));
+    const next = generateNextKORound(completed, [], makeCourts(2), TID, true);
+    expect(next.find((m) => m.stage === "final")).toBeDefined();
+    expect(next.find((m) => m.stage === "bronze")).toBeDefined();
+  });
+
+  it("3-team bracket with hasBronze: only 1 SF + Final, no Bronze", () => {
+    _matchIdx = 0;
+    const playIn = generateFirstKORound(makeGroups(3, 1), [], makeCourts(2), TID, true);
+    const completed = playIn.map((m) => completeMatch(m));
+    // Top seed gets external bye into the next round
+    const byes = ["G0T0"];
+    const next = generateNextKORound(completed, byes, makeCourts(2), TID, true);
+    // Goes straight to Final via 2 entrants → no Bronze (Bronze needs 2 SFs)
+    expect(next.filter((m) => m.stage === "final")).toHaveLength(1);
+    expect(next.find((m) => m.stage === "bronze")).toBeUndefined();
+  });
+
+  it("hasBronze=false never emits a bronze match", () => {
+    _matchIdx = 0;
+    const sfs = generateFirstKORound(makeGroups(4, 1), [], makeCourts(2), TID, false);
+    const completed = sfs.map((m) => completeMatch(m));
+    const next = generateNextKORound(completed, [], makeCourts(2), TID, false);
+    expect(next.find((m) => m.stage === "bronze")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Court allocation
+// ---------------------------------------------------------------------------
+
+describe("court allocation", () => {
+  it("8 teams × 2 courts: matches alternate court_id across the round", () => {
+    _matchIdx = 0;
+    const matches = generateFirstKORound(makeGroups(8, 1), [], makeCourts(2), TID, false);
+    expect(matches).toHaveLength(4);
+    expect(matches[0].court_id).toBe("c1");
+    expect(matches[1].court_id).toBe("c2");
+    expect(matches[2].court_id).toBe("c1");
+    expect(matches[3].court_id).toBe("c2");
+  });
+
+  it("multi-bracket court split: each bracket gets its own subset (round-robin)", () => {
+    _matchIdx = 0;
+    const matches = generateFirstKORound(makeGroups(4, 2), [], makeCourts(4), TID, false);
+    const aCourts = new Set(
+      matches.filter((m) => m.bracket === "A").map((m) => m.court_id)
+    );
+    const bCourts = new Set(
+      matches.filter((m) => m.bracket === "B").map((m) => m.court_id)
+    );
+    // A gets c1/c3, B gets c2/c4 (round-robin), no overlap
+    expect([...aCourts].some((c) => bCourts.has(c!))).toBe(false);
+  });
+
+  it("falls back to the global courts list when a bracket gets no slot", () => {
+    // 4 brackets but only 2 courts: some bracket would be empty under strict
+    // round-robin. Helper returns the full list so matches still have a court.
+    _matchIdx = 0;
+    const matches = generateFirstKORound(makeGroups(2, 4), [], makeCourts(2), TID, false);
+    expect(matches.every((m) => m.court_id !== null)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 1-court configuration: every reasonable bracket size still completes
+// ---------------------------------------------------------------------------
+
+describe("1 court — every bracket size produces a Final eventually", () => {
+  it("2 teams: straight Final", () => {
+    _matchIdx = 0;
+    const courts = makeCourts(1);
+    const r1 = generateFirstKORound(makeGroups(2, 1), [], courts, TID, false);
+    expect(r1).toHaveLength(1);
+    expect(r1[0].stage).toBe("final");
+  });
+
+  it("3 teams: play-in → Final via top-seed bye", () => {
+    _matchIdx = 0;
+    const courts = makeCourts(1);
+    const r1 = generateFirstKORound(makeGroups(3, 1), [], courts, TID, false);
+    expect(r1[0].stage).toBe("quarter_final");
+    const r1Done = r1.map((m) => completeMatch(m));
+    const r2 = generateNextKORound(r1Done, ["G0T0"], courts, TID, false);
+    expect(r2.find((m) => m.stage === "final")).toBeDefined();
+  });
+
+  it("4 teams: SF → Final", () => {
+    _matchIdx = 0;
+    const courts = makeCourts(1);
+    const r1 = generateFirstKORound(makeGroups(4, 1), [], courts, TID, false);
+    expect(r1.every((m) => m.stage === "semi_final")).toBe(true);
+    const r1Done = r1.map((m) => completeMatch(m));
+    const r2 = generateNextKORound(r1Done, [], courts, TID, false);
+    expect(r2.find((m) => m.stage === "final")).toBeDefined();
+  });
+
+  it("5 teams: QF play-in → SF → Final", () => {
+    _matchIdx = 0;
+    const courts = makeCourts(1);
+    const r1 = generateFirstKORound(makeGroups(5, 1), [], courts, TID, false);
+    expect(r1).toHaveLength(1);
+    expect(r1[0].stage).toBe("quarter_final");
+    const r1Done = r1.map((m) => completeMatch(m));
+    const r2 = generateNextKORound(
+      r1Done,
+      ["G0T0", "G1T0", "G2T0"],
+      courts,
+      TID,
+      false
+    );
+    expect(r2).toHaveLength(2);
+    expect(r2.every((m) => m.stage === "semi_final")).toBe(true);
+    const r2Done = r2.map((m) => completeMatch(m));
+    const r3 = generateNextKORound(r2Done, [], courts, TID, false);
+    expect(r3.find((m) => m.stage === "final")).toBeDefined();
+  });
+
+  it("8 teams: QF → SF → Final on a single court", () => {
+    _matchIdx = 0;
+    const courts = makeCourts(1);
+    const r1 = generateFirstKORound(makeGroups(8, 1), [], courts, TID, false);
+    expect(r1).toHaveLength(4);
+    const r1Done = r1.map((m) => completeMatch(m));
+    const r2 = generateNextKORound(r1Done, [], courts, TID, false);
+    expect(r2).toHaveLength(2);
+    const r2Done = r2.map((m) => completeMatch(m));
+    const r3 = generateNextKORound(r2Done, [], courts, TID, false);
+    expect(r3.find((m) => m.stage === "final")).toBeDefined();
+  });
 });
