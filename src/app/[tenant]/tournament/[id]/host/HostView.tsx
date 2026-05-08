@@ -694,10 +694,34 @@ function HostInner({
   const [completing, setCompleting] = useState(false);
   const [completeErr, setCompleteErr] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const unpaidCount = useMemo(
     () => paymentRows.filter((r) => !r.paid).length,
     [paymentRows]
   );
+
+  // Mirror the browser's fullscreen state into React so the header can swap
+  // layout (centered logos + title) and the host view can overlay the tenant
+  // nav (which lives in the parent layout and can't be removed from here).
+  useEffect(() => {
+    const sync = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  async function toggleFullscreen(): Promise<void> {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // User-gesture or permission failure — flip the local flag so the host
+      // still gets the overlay layout even if real fullscreen is blocked.
+      setIsFullscreen((v) => !v);
+    }
+  }
 
   async function handleComplete(): Promise<void> {
     if (!confirm("Avsluta sessionen? Alla matcher är klara och sessionen flyttas till Avslutade.")) return;
@@ -732,16 +756,51 @@ function HostInner({
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <header className="sticky top-0 z-10 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 px-6 py-3 flex items-center justify-between gap-4">
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-40 overflow-auto bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100"
+          : "min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100"
+      }
+    >
+      <header className="sticky top-0 z-10 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 px-6 py-3 flex items-center justify-between gap-4 relative">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold leading-tight">
-            {tournament.name}
-          </h1>
-          <p className="text-xs text-zinc-500">
-            {tenant.name} · Mål {tournament.games_per_match} game
-          </p>
+          {!isFullscreen && (
+            <>
+              <h1 className="text-xl font-semibold leading-tight">{tournament.name}</h1>
+              <p className="text-xs text-zinc-500">
+                {tenant.name} · Mål {tournament.games_per_match} game
+              </p>
+            </>
+          )}
         </div>
+
+        {isFullscreen && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 pointer-events-none">
+            {tenant.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={tenant.logo_url}
+                alt=""
+                className={`h-8 w-auto ${tenant.logo_url_dark ? "dark:hidden" : ""}`}
+              />
+            )}
+            {tenant.logo_url_dark && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={tenant.logo_url_dark}
+                alt=""
+                className={`h-8 w-auto ${tenant.logo_url ? "hidden dark:block" : ""}`}
+              />
+            )}
+            <h1 className="text-xl font-semibold leading-tight whitespace-nowrap">
+              {tournament.name}
+            </h1>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/triad-logo.png" alt="Triad Solutions" className="h-8 w-auto" />
+          </div>
+        )}
+
         <div className="flex items-center gap-2 shrink-0">
           {(tournamentPhase === "ko_active" || tournamentPhase === "done") && koBracketProgress.length > 0 ? (
             koBracketProgress.map(({ bracket, completed, total, runningStage }) => (
@@ -814,6 +873,44 @@ function HostInner({
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => void toggleFullscreen()}
+            aria-label={isFullscreen ? "Avsluta helskärm" : "Helskärm"}
+            title={isFullscreen ? "Avsluta helskärm" : "Helskärm"}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            {isFullscreen ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-4 h-4 text-zinc-500"
+                aria-hidden="true"
+              >
+                <path d="M9 9H4M9 9V4M15 9h5M15 9V4M9 15H4M9 15v5M15 15h5M15 15v5" />
+              </svg>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-4 h-4 text-zinc-500"
+                aria-hidden="true"
+              >
+                <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+              </svg>
+            )}
+            <span className="hidden sm:inline">{isFullscreen ? "Avsluta" : "Helskärm"}</span>
+          </button>
           <Link
             href={`/${tenant.slug}/tournament/${tournament.id}/display`}
             target="_blank"
@@ -834,7 +931,7 @@ function HostInner({
               <line x1="8" y1="21" x2="16" y2="21" />
               <line x1="12" y1="17" x2="12" y2="21" />
             </svg>
-            Öppna TV-visning
+            <span className="hidden sm:inline">Öppna TV-visning</span>
           </Link>
         </div>
       </header>
@@ -1638,6 +1735,7 @@ function MatchRow({
   gamesPerMatch,
   onSave,
   busy,
+  compact = false,
 }: {
   match: TournamentMatch;
   team1: TournamentTeam | undefined;
@@ -1649,6 +1747,7 @@ function MatchRow({
   gamesPerMatch: number;
   onSave: (m: TournamentMatch, s1: number, s2: number) => Promise<void>;
   busy: boolean;
+  compact?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [s1, setS1] = useState<number>(match.score_team1 ?? 0);
@@ -1687,8 +1786,98 @@ function MatchRow({
   const team1Label = team1 ? shortTeamName(team1, playerMap) : "?";
   const team2Label = team2 ? shortTeamName(team2, playerMap) : "?";
 
+  // Compact single-line row used for past (completed) and future (blocked)
+  // rounds. Edit on a past row pops the user back into the full editor.
+  if (compact && !showInputs) {
+    return (
+      <div
+        className={`px-3 py-1 flex items-center gap-2 text-xs ${
+          isBlocked ? "opacity-60" : ""
+        }`}
+      >
+        <span
+          className="flex-1 min-w-0 text-right truncate"
+          title={team1Label}
+        >
+          {team1Label}
+        </span>
+        {isCompleted ? (
+          <span className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800/60 font-bold tabular-nums">
+            <span
+              className={
+                (match.score_team1 ?? 0) > (match.score_team2 ?? 0)
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : "text-zinc-400"
+              }
+            >
+              {match.score_team1 ?? "–"}
+            </span>
+            <span className="text-zinc-400">–</span>
+            <span
+              className={
+                (match.score_team2 ?? 0) > (match.score_team1 ?? 0)
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : "text-zinc-400"
+              }
+            >
+              {match.score_team2 ?? "–"}
+            </span>
+          </span>
+        ) : (
+          <span className="shrink-0 text-zinc-400">vs</span>
+        )}
+        <span
+          className="flex-1 min-w-0 text-left truncate"
+          title={team2Label}
+        >
+          {team2Label}
+        </span>
+        <span className="shrink-0 flex items-center">
+          {isCompleted ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label="Redigera resultat"
+              title="Redigera resultat"
+              className="h-6 w-6 rounded text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="w-3 h-3"
+                aria-hidden
+              >
+                <path d="M2.695 14.762l-1.262 3.155a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.886L17.5 5.5a2.121 2.121 0 0 0-3-3L3.58 13.419a4 4 0 0 0-.885 1.343Z" />
+              </svg>
+            </button>
+          ) : (
+            <span
+              aria-hidden
+              className="h-6 w-6 flex items-center justify-center text-amber-500"
+              title={reason ?? "Låst"}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="w-3 h-3"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </span>
+          )}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className={`px-3 py-2 ${isBlocked ? "bg-zinc-50/60 dark:bg-zinc-900/40" : ""}`}>
+    <div className={`px-3 py-1.5 ${isBlocked ? "bg-zinc-50/60 dark:bg-zinc-900/40" : ""}`}>
       <div className="flex items-center gap-2">
         <span
           className="flex-1 min-w-0 text-right text-sm font-medium truncate"
@@ -1801,26 +1990,28 @@ function MatchRow({
         </div>
       </div>
 
-      <div className="mt-1 flex items-center gap-2 text-[10px] text-zinc-400 pl-1 min-h-[14px]">
-        {courtName && <span className="font-medium">{courtName}</span>}
-        {isBlocked && reason && (
-          <>
-            {courtName && <span className="text-zinc-300">·</span>}
-            <span className="text-amber-600 dark:text-amber-400 font-medium truncate">
-              {reason}
-            </span>
-          </>
-        )}
-        {isCompleted && editing && (
-          <button
-            type="button"
-            onClick={cancelEdit}
-            className="ml-auto text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100"
-          >
-            Avbryt
-          </button>
-        )}
-      </div>
+      {(courtName || (isBlocked && reason) || (isCompleted && editing)) && (
+        <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400 pl-1">
+          {courtName && <span className="font-medium">{courtName}</span>}
+          {isBlocked && reason && (
+            <>
+              {courtName && <span className="text-zinc-300">·</span>}
+              <span className="text-amber-600 dark:text-amber-400 font-medium truncate">
+                {reason}
+              </span>
+            </>
+          )}
+          {isCompleted && editing && (
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="ml-auto text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100"
+            >
+              Avbryt
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1864,6 +2055,18 @@ function GroupColumn({
     return [...map.entries()].sort((a, b) => a[0] - b[0]);
   }, [groupMatches]);
 
+  // Lowest round number with at least one unfinished match — visually
+  // emphasized so the host always sees what's playable now.
+  const currentRound = useMemo(() => {
+    let r: number | null = null;
+    for (const m of groupMatches) {
+      if (m.status !== "completed") {
+        if (r === null || m.round_number < r) r = m.round_number;
+      }
+    }
+    return r;
+  }, [groupMatches]);
+
   const standings = useMemo(
     () => computeStandings(groupTeams, groupMatches, playerMap),
     [groupTeams, groupMatches, playerMap]
@@ -1875,49 +2078,14 @@ function GroupColumn({
         {group.name}
       </div>
 
-      <div>
-        {matchesByRound.length === 0 && (
-          <div className="px-4 py-3 text-xs text-zinc-500">Inga matcher.</div>
-        )}
-        {matchesByRound.map(([round, ms]) => (
-          <div key={round}>
-            <div className="px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900/60 text-[10px] font-bold uppercase tracking-wide text-zinc-500 border-y border-zinc-100 dark:border-zinc-800">
-              Omgång {round}
-            </div>
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {ms.map((m) => {
-                const ui =
-                  matchUiStates.get(m.id) ?? { state: "ready" as const, reason: null };
-                return (
-                  <MatchRow
-                    key={m.id}
-                    match={m}
-                    team1={teamMap.get(m.team1_id)}
-                    team2={teamMap.get(m.team2_id)}
-                    playerMap={playerMap}
-                    courtName={
-                      m.court_id ? courtMap.get(m.court_id)?.name ?? null : null
-                    }
-                    uiState={ui.state}
-                    reason={ui.reason}
-                    gamesPerMatch={gamesPerMatch}
-                    onSave={onSave}
-                    busy={busyId === m.id}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="border-t-2 border-zinc-200 dark:border-zinc-800">
+      {/* Standings (scoreboard) at the top of the column */}
+      <div className="border-b border-zinc-200 dark:border-zinc-800">
         <table className="w-full text-xs">
           <thead className="text-zinc-500 bg-zinc-50/60 dark:bg-zinc-900/40">
             <tr>
-              <th className="px-2 py-2 w-7">#</th>
-              <th className="text-left px-2 py-2 font-medium">Lag</th>
-              <th className="px-1 py-2">
+              <th className="px-2 py-1 w-7">#</th>
+              <th className="text-left px-2 py-1 font-medium">Lag</th>
+              <th className="px-1 py-1">
                 <abbr
                   title="Matcher spelade"
                   className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
@@ -1925,7 +2093,7 @@ function GroupColumn({
                   MP
                 </abbr>
               </th>
-              <th className="px-1 py-2">
+              <th className="px-1 py-1">
                 <abbr
                   title="Vunna game"
                   className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
@@ -1933,7 +2101,7 @@ function GroupColumn({
                   GF
                 </abbr>
               </th>
-              <th className="px-1 py-2">
+              <th className="px-1 py-1">
                 <abbr
                   title="Förlorade game"
                   className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
@@ -1941,7 +2109,7 @@ function GroupColumn({
                   GA
                 </abbr>
               </th>
-              <th className="px-1 py-2">
+              <th className="px-1 py-1">
                 <abbr
                   title="Game-skillnad"
                   className="cursor-help no-underline decoration-dotted underline-offset-2 hover:underline"
@@ -1960,26 +2128,31 @@ function GroupColumn({
                   key={s.team_id}
                   className={`border-t border-zinc-100 dark:border-zinc-800 ${slutspel ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
                 >
-                  <td className="px-2 py-2 text-center text-zinc-500 align-top">
+                  <td className="px-2 py-1 text-center text-zinc-500">
                     {i + 1}
                   </td>
-                  <td className="px-2 py-2 align-top">
-                    <div
-                      className="font-medium truncate"
-                      title={t ? teamName(t, playerMap) : s.teamName}
-                    >
-                      {t ? shortTeamName(t, playerMap) : s.teamName}
+                  <td className="px-2 py-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className="font-medium truncate"
+                        title={t ? teamName(t, playerMap) : s.teamName}
+                      >
+                        {t ? shortTeamName(t, playerMap) : s.teamName}
+                      </span>
+                      {slutspel && (
+                        <span
+                          className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 px-1 py-px rounded bg-emerald-100/60 dark:bg-emerald-950/40"
+                          title={`Går vidare till ${slutspel}`}
+                        >
+                          {slutspel.replace("-slutspel", "")}
+                        </span>
+                      )}
                     </div>
-                    {slutspel && (
-                      <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                        → {slutspel}
-                      </div>
-                    )}
                   </td>
-                  <td className="px-1 py-2 text-center align-top">{s.mp}</td>
-                  <td className="px-1 py-2 text-center align-top">{s.gf}</td>
-                  <td className="px-1 py-2 text-center align-top">{s.ga}</td>
-                  <td className="px-1 py-2 text-center font-semibold align-top">
+                  <td className="px-1 py-1 text-center">{s.mp}</td>
+                  <td className="px-1 py-1 text-center">{s.gf}</td>
+                  <td className="px-1 py-1 text-center">{s.ga}</td>
+                  <td className="px-1 py-1 text-center font-semibold">
                     {s.gd > 0 ? `+${s.gd}` : s.gd}
                   </td>
                 </tr>
@@ -1987,6 +2160,68 @@ function GroupColumn({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Matches grouped by round. Past/future rounds render compact; the
+          current round gets full-size match rows with steppers. */}
+      <div>
+        {matchesByRound.length === 0 && (
+          <div className="px-4 py-3 text-xs text-zinc-500">Inga matcher.</div>
+        )}
+        {matchesByRound.map(([round, ms]) => {
+          const isCurrent = currentRound !== null && round === currentRound;
+          const isPast = currentRound === null || round < (currentRound ?? Infinity);
+          return (
+            <div key={round}>
+              <div
+                className={
+                  isCurrent
+                    ? "px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 border-y border-emerald-200 dark:border-emerald-900/40 flex items-center gap-1.5"
+                    : "px-3 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 bg-zinc-50/40 dark:bg-zinc-900/40 border-y border-zinc-100 dark:border-zinc-800/60"
+                }
+              >
+                <span>Omgång {round}</span>
+                {isCurrent ? (
+                  <span className="ml-auto text-[10px] font-semibold normal-case tracking-normal text-emerald-700/80 dark:text-emerald-400/80">
+                    pågår
+                  </span>
+                ) : isPast ? (
+                  <span className="ml-auto text-[9px] font-medium normal-case tracking-normal text-zinc-400">
+                    klar
+                  </span>
+                ) : (
+                  <span className="ml-auto text-[9px] font-medium normal-case tracking-normal text-zinc-400">
+                    kommande
+                  </span>
+                )}
+              </div>
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {ms.map((m) => {
+                  const ui =
+                    matchUiStates.get(m.id) ?? { state: "ready" as const, reason: null };
+                  return (
+                    <MatchRow
+                      key={m.id}
+                      match={m}
+                      team1={teamMap.get(m.team1_id)}
+                      team2={teamMap.get(m.team2_id)}
+                      playerMap={playerMap}
+                      courtName={
+                        m.court_id ? courtMap.get(m.court_id)?.name ?? null : null
+                      }
+                      uiState={ui.state}
+                      reason={ui.reason}
+                      gamesPerMatch={gamesPerMatch}
+                      onSave={onSave}
+                      busy={busyId === m.id}
+                      compact={!isCurrent}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
