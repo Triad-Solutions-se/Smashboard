@@ -449,15 +449,7 @@ export function DisplayView({
           />
         ) : (
           <>
-            <div className="flex-1 min-w-0 flex flex-col gap-[1.5vh]">
-              {computed.restingTeamIds.length > 0 && (
-                <RestingChip
-                  teamIds={computed.restingTeamIds}
-                  teamMap={computed.teamMap}
-                  playerMap={computed.playerMap}
-                  accent={accent}
-                />
-              )}
+            <div className="flex-1 min-w-0 flex flex-col">
               <div className="flex-1 min-h-0">
                 <MatchesView
                   courts={computed.tournamentCourts}
@@ -479,6 +471,7 @@ export function DisplayView({
                   teams={data.teams}
                   matches={data.matches}
                   playerMap={computed.playerMap}
+                  restingTeamIds={computed.restingTeamIds}
                   accent={accent}
                 />
               </aside>
@@ -496,56 +489,6 @@ export function DisplayView({
       />
 
       <FullscreenButton accent={accent} />
-    </div>
-  );
-}
-
-// --- Resting cards (group phase) ---
-function RestingChip({
-  teamIds,
-  teamMap,
-  playerMap,
-  accent,
-}: {
-  teamIds: string[];
-  teamMap: Map<string, TournamentTeam>;
-  playerMap: Map<string, Player>;
-  accent: string;
-}) {
-  return (
-    <div className="flex items-center gap-[1vw]">
-      <span
-        className="shrink-0 font-bold uppercase tracking-wider"
-        style={{ fontSize: "clamp(0.55rem, 0.75vw, 0.9rem)", color: accent }}
-      >
-        Vilar
-      </span>
-      <div className="flex flex-wrap gap-[0.6vw]">
-        {teamIds.map((tid) => {
-          const t = teamMap.get(tid);
-          if (!t) return null;
-          const p1 = playerMap.get(t.player1_id);
-          const p2 = t.player2_id ? playerMap.get(t.player2_id) : null;
-          return (
-            <div
-              key={tid}
-              className="rounded-xl"
-              style={{
-                background: `linear-gradient(135deg, ${accent}18 0%, ${accent}08 100%)`,
-                border: `1.5px solid ${accent}33`,
-                padding: "clamp(0.25rem, 0.4vh, 0.5rem) clamp(0.5rem, 0.8vw, 1rem)",
-              }}
-            >
-              <span
-                className="font-semibold text-zinc-700 dark:text-zinc-300"
-                style={{ fontSize: "clamp(0.65rem, 0.9vw, 1.1rem)" }}
-              >
-                {shortName(p1)}{p2 ? ` & ${shortName(p2)}` : ""}
-              </span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -1382,14 +1325,17 @@ function StandingsColumn({
   teams,
   matches,
   playerMap,
+  restingTeamIds,
   accent,
 }: {
   groups: TournamentGroup[];
   teams: TournamentTeam[];
   matches: TournamentMatch[];
   playerMap: Map<string, Player>;
+  restingTeamIds: string[];
   accent: string;
 }) {
+  const restingSet = new Set(restingTeamIds);
   // Count total rows to auto-scale font size so everything fits
   const totalTeamRows = groups.reduce((sum, g) => {
     const gt = teams.filter((t) => t.group_id === g.id);
@@ -1450,6 +1396,7 @@ function StandingsColumn({
               <ul className="flex flex-col">
                 {standings.map((s, i) => {
                   const top = i === 0;
+                  const isResting = restingSet.has(s.team_id);
                   return (
                     <li
                       key={s.team_id}
@@ -1477,6 +1424,21 @@ function StandingsColumn({
                             : s.teamName;
                         })()}
                       </span>
+                      {isResting && (
+                        <span
+                          className="shrink-0 inline-flex items-center justify-center rounded-md font-bold uppercase tracking-wider"
+                          style={{
+                            fontSize: `clamp(0.4rem, ${0.5 * scale}vw, ${0.62 * scale}rem)`,
+                            padding: `${0.1 * scale}vh ${0.4 * scale}vw`,
+                            backgroundColor: `${accent}25`,
+                            color: accent,
+                            letterSpacing: "0.08em",
+                          }}
+                          title="Vilar denna runda"
+                        >
+                          Vilar
+                        </span>
+                      )}
                       <span
                         className="shrink-0 tabular-nums font-bold"
                         style={{
