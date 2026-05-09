@@ -263,152 +263,447 @@ export function TVMockup({ size = "md" }: { size?: "md" | "lg" }) {
   );
 }
 
-const tvCourts = [
-  { label: "B1", teamA: { name: "Andersson / Lind", score: 5 }, teamB: { name: "Berg / Holm", score: 3 }, live: true },
-  { label: "B2", teamA: { name: "Ek / Sjöberg", score: 4 }, teamB: { name: "Norén / Vik", score: 4 }, live: false },
-  { label: "B3", teamA: { name: "Wahl / Ros", score: 6 }, teamB: { name: "Lund / Falk", score: 2 }, live: false },
-  { label: "B4", teamA: { name: "Karlsson / Ek", score: 1 }, teamB: { name: "Ström / Berg", score: 5 }, live: false },
-  { label: "B5", teamA: { name: "Holm / Sjö", score: 3 }, teamB: { name: "Wik / Lind", score: 6 }, live: false },
-  { label: "B6", teamA: { name: "Björk / Falk", score: 5 }, teamB: { name: "Ros / Eng", score: 5 }, live: false },
-  { label: "B7", teamA: { name: "Hult / Ahl", score: 7 }, teamB: { name: "Berg / Vik", score: 1 }, live: false },
-  { label: "B8", teamA: { name: "Lund / Eng", score: 2 }, teamB: { name: "Norén / Holm", score: 6 }, live: false },
+const TV_ACCENT = "#9fc843";
+
+type TVCourt = {
+  id: string;
+  name: string;
+  group: 0 | 1;
+  live: boolean;
+  team1: [string, string];
+  team2: [string, string];
+  next: string;
+};
+
+const tvCourts: TVCourt[] = [
+  {
+    id: "c1",
+    name: "Bana 1",
+    group: 0,
+    live: true,
+    team1: ["Andersson", "Lind"],
+    team2: ["Berg", "Holm"],
+    next: "Wahl/Ros vs Lund/Falk",
+  },
+  {
+    id: "c2",
+    name: "Bana 2",
+    group: 0,
+    live: false,
+    team1: ["Ek", "Sjöberg"],
+    team2: ["Norén", "Vik"],
+    next: "Holm/Sjö vs Wik/Lind",
+  },
+  {
+    id: "c3",
+    name: "Bana 3",
+    group: 1,
+    live: false,
+    team1: ["Wahl", "Ros"],
+    team2: ["Lund", "Falk"],
+    next: "Karlsson/Ek vs Ström/Berg",
+  },
+  {
+    id: "c4",
+    name: "Bana 4",
+    group: 1,
+    live: false,
+    team1: ["Karlsson", "Ek"],
+    team2: ["Ström", "Berg"],
+    next: "Björk/Falk vs Ros/Eng",
+  },
 ];
 
-const tvLeaderboard = [
-  { rank: 1, name: "Wahl", points: 32 },
-  { rank: 2, name: "Andersson", points: 30 },
-  { rank: 3, name: "Sjöberg", points: 28 },
-  { rank: 4, name: "Berg", points: 26 },
-  { rank: 5, name: "Lind", points: 25 },
-  { rank: 6, name: "Holm", points: 23 },
-  { rank: 7, name: "Ek", points: 22 },
-  { rank: 8, name: "Norén", points: 20 },
-  { rank: 9, name: "Vik", points: 19 },
-  { rank: 10, name: "Karlsson", points: 17 },
-  { rank: 11, name: "Falk", points: 15 },
-  { rank: 12, name: "Ström", points: 13 },
+const tvStandings = [
+  {
+    name: "Grupp A",
+    barClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    rows: [
+      { name: "Wahl/Ros", gd: 8 },
+      { name: "Andersson/Lind", gd: 4 },
+      { name: "Ek/Sjöberg", gd: -2 },
+      { name: "Berg/Holm", gd: -10 },
+    ],
+  },
+  {
+    name: "Grupp B",
+    barClass: "bg-sky-50 text-sky-800 border-sky-200",
+    rows: [
+      { name: "Hult/Ahl", gd: 6 },
+      { name: "Norén/Vik", gd: 3 },
+      { name: "Karlsson/Ström", gd: -1 },
+      { name: "Lund/Falk", gd: -8 },
+    ],
+  },
 ];
 
-function TinyCourtCard({
-  data,
-  liveScore,
-}: {
-  data: (typeof tvCourts)[number];
-  liveScore?: number;
-}) {
-  const aScore = data.live && liveScore !== undefined ? liveScore : data.teamA.score;
+function MockHeader() {
   return (
-    <div className="relative flex min-h-0 flex-col overflow-hidden rounded-[3px] ring-1 ring-white/10">
-      <MiniCourt />
-      <div className="relative flex items-center justify-between px-1 pt-0.5">
-        <span className="font-mono text-[5px] font-semibold uppercase tracking-[0.12em] text-white/85 sm:text-[6px]">
-          {data.label}
-        </span>
-        {data.live && (
-          <span className="flex items-center gap-[1px] rounded-full bg-rose-500/90 px-0.5 py-[0.5px] text-[4px] font-bold uppercase tracking-wider text-white sm:text-[5px]">
-            <span className="h-[2px] w-[2px] animate-pulse rounded-full bg-white" />
-            Live
-          </span>
-        )}
+    <header
+      className="grid shrink-0 grid-cols-3 items-center gap-2 border-b border-zinc-200 px-[2cqw]"
+      style={{ height: "13cqh" }}
+    >
+      <div className="min-w-0">
+        <div
+          className="truncate font-black leading-none tracking-tight text-zinc-900"
+          style={{ fontSize: "3.4cqw" }}
+        >
+          Bonpadel Open
+        </div>
+        <div
+          className="mt-[0.4cqh] flex items-center gap-[0.6cqw] truncate text-zinc-500"
+          style={{ fontSize: "1.4cqw" }}
+        >
+          <span className="font-semibold text-zinc-700">Bonpadel</span>
+          <span
+            className="inline-block w-px bg-zinc-300"
+            style={{ height: "0.9em" }}
+            aria-hidden
+          />
+          <span className="text-zinc-600">Mexicano</span>
+          <span
+            className="inline-block w-px bg-zinc-300"
+            style={{ height: "0.9em" }}
+            aria-hidden
+          />
+          <span className="tabular-nums">Mål 7 game</span>
+        </div>
       </div>
-      <div className="relative mt-auto space-y-[2px] px-1 pb-1">
-        <div className="flex items-center justify-between gap-1 rounded-[2px] bg-black/40 px-1 py-px backdrop-blur-sm">
-          <span className="truncate text-[5px] font-medium text-white sm:text-[6px]">
-            {data.teamA.name}
-          </span>
-          <span className="font-mono text-[7px] font-bold tabular-nums text-white sm:text-[8px]">
-            {aScore}
-          </span>
+      <div className="flex h-full items-center justify-center gap-[1.5cqw]">
+        <div
+          className="flex aspect-square items-center justify-center rounded-[0.8cqw] font-black"
+          style={{
+            height: "10cqh",
+            backgroundColor: `${TV_ACCENT}22`,
+            color: TV_ACCENT,
+            fontSize: "5cqw",
+          }}
+        >
+          B
         </div>
-        <div className="flex items-center justify-between gap-1 rounded-[2px] bg-black/40 px-1 py-px backdrop-blur-sm">
-          <span className="truncate text-[5px] font-medium text-white sm:text-[6px]">
-            {data.teamB.name}
-          </span>
-          <span className="font-mono text-[7px] font-bold tabular-nums text-white sm:text-[8px]">
-            {data.teamB.score}
-          </span>
+        <span
+          className="font-black leading-none text-zinc-900"
+          style={{ fontSize: "4.5cqw" }}
+        >
+          ×
+        </span>
+        <span
+          className="font-black tracking-tight text-zinc-900"
+          style={{ fontSize: "2.4cqw" }}
+        >
+          triad
+        </span>
+      </div>
+      <div className="flex items-center justify-end gap-[1.4cqw]">
+        <div
+          className="text-right leading-tight text-zinc-500"
+          style={{ fontSize: "1.2cqw" }}
+        >
+          <p className="font-semibold text-zinc-700">Rapportera</p>
+          <p>Skanna &amp; välj lag</p>
         </div>
+        <div
+          className="grid grid-cols-5 grid-rows-5 gap-[0.15cqw] rounded-[0.5cqw] bg-white p-[0.4cqw] ring-1 ring-zinc-200"
+          style={{ width: "9.5cqh", height: "9.5cqh" }}
+          aria-hidden
+        >
+          {[
+            1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1,
+            1, 1,
+          ].map((on, i) => (
+            <div
+              key={i}
+              className={on ? "bg-zinc-900" : "bg-transparent"}
+              style={{ borderRadius: "0.05cqw" }}
+            />
+          ))}
+        </div>
+        <div className="flex flex-col items-end gap-[0.3cqh]">
+          <div className="flex items-center gap-[0.4cqw]">
+            <span
+              className="inline-block animate-pulse rounded-full"
+              style={{
+                width: "0.7cqw",
+                height: "0.7cqw",
+                backgroundColor: TV_ACCENT,
+              }}
+            />
+            <span
+              className="font-semibold uppercase tracking-widest text-zinc-700"
+              style={{ fontSize: "1.1cqw" }}
+            >
+              Live · 14:32
+            </span>
+          </div>
+          <div
+            className="tabular-nums text-zinc-500"
+            style={{ fontSize: "1.1cqw" }}
+          >
+            12 / 24 matcher
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function MockCourtCard({ court }: { court: TVCourt }) {
+  const groupBadgeClass =
+    court.group === 0
+      ? "bg-emerald-100 text-emerald-700"
+      : "bg-sky-100 text-sky-700";
+  return (
+    <div
+      className="relative flex flex-col overflow-hidden rounded-[1cqw]"
+      style={{
+        ...(court.live
+          ? {
+              boxShadow: `inset 0 0 0 0.25cqw ${TV_ACCENT}, 0 0 3cqw -0.8cqw ${TV_ACCENT}`,
+            }
+          : {}),
+      }}
+    >
+      <div className="relative flex items-center justify-between gap-[0.6cqw] px-[1.2cqw] pt-[0.7cqh] pb-[0.4cqh]">
+        <div className="flex items-center gap-[0.6cqw]">
+          <div
+            className="rounded-[0.3cqw] px-[0.6cqw] py-[0.05cqh] font-black tracking-tight"
+            style={{
+              backgroundColor: `${TV_ACCENT}1f`,
+              color: TV_ACCENT,
+              fontSize: "1.9cqw",
+            }}
+          >
+            {court.name}
+          </div>
+          {court.live && (
+            <span
+              className="inline-flex items-center gap-[0.3cqw] rounded-full px-[0.7cqw] py-[0.1cqh] font-black uppercase tracking-widest text-white"
+              style={{
+                backgroundColor: TV_ACCENT,
+                fontSize: "1cqw",
+                boxShadow: `0 0 0 0.4cqw ${TV_ACCENT}22`,
+              }}
+            >
+              <span
+                className="inline-block animate-pulse rounded-full bg-white"
+                style={{ width: "0.5cqw", height: "0.5cqw" }}
+              />
+              Live
+            </span>
+          )}
+        </div>
+        <div
+          className={`rounded-[0.3cqw] px-[0.5cqw] py-[0.05cqh] font-bold uppercase tracking-wider ${groupBadgeClass}`}
+          style={{ fontSize: "1.1cqw" }}
+        >
+          Grupp {court.group === 0 ? "A" : "B"}
+        </div>
+      </div>
+      <div className="relative flex min-h-0 flex-1 items-center px-[0.5cqw] pb-[0.4cqh]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/icons/court-topdown.svg"
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full object-contain object-center"
+        />
+        <div className="relative grid w-full grid-cols-2 items-center gap-[1cqw] px-[8%]">
+          <div className="min-w-0 text-right">
+            <div
+              className="truncate font-bold leading-tight text-white"
+              style={{
+                fontSize: "2.3cqw",
+                textShadow: "0 0.1cqw 0.3cqw rgba(0,0,0,0.5)",
+              }}
+            >
+              {court.team1[0]}
+            </div>
+            <div
+              className="truncate font-bold leading-tight text-white"
+              style={{
+                fontSize: "2.3cqw",
+                textShadow: "0 0.1cqw 0.3cqw rgba(0,0,0,0.5)",
+              }}
+            >
+              {court.team1[1]}
+            </div>
+          </div>
+          <div className="min-w-0 text-left">
+            <div
+              className="truncate font-bold leading-tight text-white"
+              style={{
+                fontSize: "2.3cqw",
+                textShadow: "0 0.1cqw 0.3cqw rgba(0,0,0,0.5)",
+              }}
+            >
+              {court.team2[0]}
+            </div>
+            <div
+              className="truncate font-bold leading-tight text-white"
+              style={{
+                fontSize: "2.3cqw",
+                textShadow: "0 0.1cqw 0.3cqw rgba(0,0,0,0.5)",
+              }}
+            >
+              {court.team2[1]}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="relative flex items-center gap-[0.6cqw] border-t border-zinc-200 px-[1cqw] py-[0.4cqh]">
+        <span
+          className="inline-flex shrink-0 items-center gap-[0.2cqw] rounded-[0.3cqw] px-[0.5cqw] py-[0.05cqh] font-black uppercase tracking-widest"
+          style={{
+            backgroundColor: `${TV_ACCENT}1a`,
+            color: TV_ACCENT,
+            fontSize: "0.95cqw",
+          }}
+        >
+          Nästa <span aria-hidden>→</span>
+        </span>
+        <span
+          className="truncate font-semibold text-zinc-700"
+          style={{ fontSize: "1.15cqw" }}
+        >
+          {court.next}
+        </span>
       </div>
     </div>
   );
 }
 
-function ScreenContent({ liveScore }: { liveScore: number }) {
+function MockStandings() {
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-white/5 px-2 py-[3px] sm:px-2.5 sm:py-1">
-        <div className="flex items-center gap-1">
-          <div className="h-1 w-1 animate-pulse rounded-full bg-rose-500" />
-          <span className="font-mono text-[6px] font-bold uppercase tracking-[0.18em] text-white/85 sm:text-[7px]">
-            Bonpadel · Mexicano
-          </span>
+    <div
+      className="flex h-full flex-col overflow-hidden rounded-[1cqw] border border-zinc-200 bg-white"
+      style={{ boxShadow: "0 0.4cqw 1.8cqw -1cqw rgba(0,0,0,0.18)" }}
+    >
+      <div
+        className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-[0.8cqw] py-[0.5cqh]"
+        style={{ backgroundColor: `${TV_ACCENT}15` }}
+      >
+        <div
+          className="font-black uppercase tracking-[0.1em]"
+          style={{ color: TV_ACCENT, fontSize: "1.5cqw" }}
+        >
+          Tabell
         </div>
-        <span className="font-mono text-[6px] font-semibold uppercase tracking-[0.18em] text-white/60 sm:text-[7px]">
-          Runda 3 / 5
-        </span>
+        <div
+          className="font-semibold uppercase tracking-widest tabular-nums text-zinc-500"
+          style={{ fontSize: "1cqw" }}
+        >
+          # · LAG · GD
+        </div>
       </div>
+      <div className="flex min-h-0 flex-1 flex-col divide-y divide-zinc-200">
+        {tvStandings.map((g) => (
+          <div key={g.name} className="flex min-h-fit flex-1 flex-col">
+            <div
+              className={`flex items-center justify-between px-[0.8cqw] py-[0.3cqh] font-bold tracking-tight ${g.barClass}`}
+              style={{ fontSize: "1.4cqw" }}
+            >
+              <span>{g.name}</span>
+              <span
+                className="font-semibold tabular-nums opacity-60"
+                style={{ fontSize: "1.05cqw" }}
+              >
+                {g.rows.length}
+              </span>
+            </div>
+            <ul className="flex flex-col">
+              {g.rows.map((r, i) => (
+                <li
+                  key={r.name}
+                  className="flex items-center gap-[0.5cqw] border-t border-zinc-100 px-[0.8cqw] py-[0.3cqh]"
+                  style={{ fontSize: "1.4cqw" }}
+                >
+                  <span
+                    className="inline-flex shrink-0 items-center justify-center rounded-full font-black tabular-nums"
+                    style={{
+                      width: "1.5em",
+                      height: "1.5em",
+                      ...(i === 0
+                        ? {
+                            backgroundColor: `${TV_ACCENT}25`,
+                            color: TV_ACCENT,
+                          }
+                        : { color: "#a1a1aa" }),
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-semibold text-zinc-800">
+                    {r.name}
+                  </span>
+                  <span
+                    className="shrink-0 font-bold tabular-nums"
+                    style={{
+                      color:
+                        r.gd > 0
+                          ? TV_ACCENT
+                          : r.gd < 0
+                            ? "#dc2626"
+                            : "#71717a",
+                    }}
+                  >
+                    {r.gd > 0 ? `+${r.gd}` : r.gd}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-      <div className="grid min-h-0 flex-1 grid-cols-4 gap-1 p-1 sm:gap-1.5 sm:p-1.5">
-        <div className="col-span-3 grid min-h-0 grid-cols-4 grid-rows-2 gap-1 sm:gap-1.5">
-          {tvCourts.map((c, i) => (
-            <TinyCourtCard
-              key={c.label}
-              data={c}
-              liveScore={i === 0 ? liveScore : undefined}
-            />
+function MockFooter() {
+  return (
+    <footer className="flex shrink-0 items-center justify-between gap-[1cqw] border-t border-zinc-200 px-[2cqw] py-[0.5cqh]">
+      <div
+        className="flex min-w-0 items-center gap-[0.6cqw] font-semibold uppercase tracking-widest text-zinc-500"
+        style={{ fontSize: "1.05cqw" }}
+      >
+        <span className="text-zinc-700">Bonpadel</span>
+        <span className="text-zinc-300">·</span>
+        <span>Pågående</span>
+        <span className="text-zinc-300">·</span>
+        <span className="tabular-nums">Uppdaterad 14:32</span>
+      </div>
+      <div
+        className="font-semibold uppercase tracking-widest text-zinc-400"
+        style={{ fontSize: "1.05cqw" }}
+      >
+        smashboard
+      </div>
+    </footer>
+  );
+}
+
+function ScreenContent() {
+  return (
+    <div
+      className="flex h-full w-full flex-col bg-zinc-50 text-zinc-900"
+      style={{ containerType: "size" }}
+    >
+      <MockHeader />
+      <main className="flex min-h-0 flex-1 gap-[1cqw] px-[1.5cqw] py-[0.8cqh]">
+        <div className="grid min-w-0 flex-1 grid-cols-2 grid-rows-2 gap-[1cqw]">
+          {tvCourts.map((c) => (
+            <MockCourtCard key={c.id} court={c} />
           ))}
         </div>
-
-        <div className="flex min-h-0 flex-col rounded-[4px] bg-white/5 p-1 ring-1 ring-white/10 sm:p-1.5">
-          <div className="mb-0.5 flex items-center justify-between sm:mb-1">
-            <span className="font-mono text-[5px] font-bold uppercase tracking-[0.18em] text-[#9fc843] sm:text-[6px]">
-              Topplista
-            </span>
-            <span className="font-mono text-[5px] uppercase tracking-wider text-white/40 sm:text-[6px]">
-              Poäng
-            </span>
-          </div>
-          <ul className="flex flex-1 flex-col justify-between">
-            {tvLeaderboard.map((row) => (
-              <li
-                key={row.name}
-                className="flex items-center justify-between px-0.5 text-[6px] leading-tight text-white sm:text-[7px]"
-              >
-                <span className="flex items-center gap-1">
-                  <span
-                    className={`flex h-2 w-2 items-center justify-center rounded-full font-mono text-[4px] font-bold sm:h-2.5 sm:w-2.5 sm:text-[5px] ${
-                      row.rank === 1
-                        ? "bg-[#9fc843] text-slate-950"
-                        : "bg-white/10 text-white/80"
-                    }`}
-                  >
-                    {row.rank}
-                  </span>
-                  <span className="truncate font-medium">{row.name}</span>
-                </span>
-                <span className="font-mono font-bold tabular-nums">
-                  {row.points}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+        <aside className="w-[28cqw] shrink-0">
+          <MockStandings />
+        </aside>
+      </main>
+      <MockFooter />
     </div>
   );
 }
 
 export function TVImageMockup({ size = "md" }: { size?: "md" | "lg" }) {
-  const [liveScore, setLiveScore] = useState(tvCourts[0].teamA.score);
-
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => {
-      setLiveScore((s) => (s >= 7 ? tvCourts[0].teamA.score : s + 1));
-    }, 2400);
-    return () => window.clearInterval(id);
-  }, []);
-
   return (
     <div
       className={`relative w-full ${
@@ -429,7 +724,7 @@ export function TVImageMockup({ size = "md" }: { size?: "md" | "lg" }) {
           aria-hidden
         />
         <div
-          className="absolute overflow-hidden bg-slate-950"
+          className="absolute overflow-hidden bg-zinc-50"
           style={{
             left: "2.99%",
             right: "2.91%",
@@ -437,7 +732,7 @@ export function TVImageMockup({ size = "md" }: { size?: "md" | "lg" }) {
             bottom: "16.02%",
           }}
         >
-          <ScreenContent liveScore={liveScore} />
+          <ScreenContent />
         </div>
       </div>
     </div>
