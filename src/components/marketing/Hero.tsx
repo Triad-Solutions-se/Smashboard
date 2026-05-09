@@ -1,6 +1,6 @@
 import { Button } from "./Button";
 import { Container } from "./Container";
-import { TVMockup } from "./TVMockup";
+import { TVImageMockup } from "./TVMockup";
 
 export function Hero() {
   return (
@@ -58,7 +58,7 @@ export function Hero() {
           </div>
 
           <div className="relative flex justify-center lg:justify-end">
-            <TVMockup size="md" />
+            <TVImageMockup size="md" />
           </div>
         </div>
       </Container>
