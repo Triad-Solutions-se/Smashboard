@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 const courts = [
@@ -256,6 +257,117 @@ export function TVMockup({ size = "md" }: { size?: "md" | "lg" }) {
           <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-white/70">
             HDMI · Laptop
           </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScreenContent({ liveScore }: { liveScore: number }) {
+  return (
+    <>
+      <div className="flex items-center justify-between border-b border-white/5 px-3 py-1.5 sm:px-4 sm:py-2">
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" />
+          <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-white/80 sm:text-[10px]">
+            Bonpadel · Mexicano
+          </span>
+        </div>
+        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-white/60 sm:text-[10px]">
+          Runda 3 / 5
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2.5 p-3 sm:grid-cols-3 sm:gap-3 sm:p-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:col-span-2 sm:gap-3">
+          {courts.map((c, i) => (
+            <CourtCard
+              key={c.label}
+              data={c}
+              liveScore={i === 0 ? liveScore : undefined}
+            />
+          ))}
+        </div>
+
+        <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#9fc843]">
+              Topplista
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-wider text-white/40">
+              Poäng
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {leaderboard.map((row) => (
+              <li
+                key={row.name}
+                className="flex items-center justify-between rounded-md px-2 py-1.5 text-xs text-white"
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`flex h-4 w-4 items-center justify-center rounded-full font-mono text-[9px] font-bold ${
+                      row.rank === 1
+                        ? "bg-[#9fc843] text-slate-950"
+                        : "bg-white/10 text-white/80"
+                    }`}
+                  >
+                    {row.rank}
+                  </span>
+                  <span className="font-medium">{row.name}</span>
+                </span>
+                <span className="font-mono font-bold tabular-nums">
+                  {row.points}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function TVImageMockup({ size = "md" }: { size?: "md" | "lg" }) {
+  const [liveScore, setLiveScore] = useState(courts[0].teamA.score);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => {
+      setLiveScore((s) => (s >= 7 ? courts[0].teamA.score : s + 1));
+    }, 2400);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <div
+      className={`relative w-full ${
+        size === "lg" ? "max-w-5xl" : "max-w-2xl"
+      }`}
+    >
+      <div
+        className="relative"
+        style={{ aspectRatio: "1238 / 874" }}
+      >
+        <Image
+          src="/tv.png"
+          alt=""
+          fill
+          priority
+          sizes="(min-width: 1024px) 42rem, 100vw"
+          className="pointer-events-none select-none object-contain"
+          aria-hidden
+        />
+        <div
+          className="absolute overflow-hidden bg-slate-950"
+          style={{
+            left: "2.99%",
+            right: "2.91%",
+            top: "4.46%",
+            bottom: "16.02%",
+          }}
+        >
+          <ScreenContent liveScore={liveScore} />
         </div>
       </div>
     </div>
