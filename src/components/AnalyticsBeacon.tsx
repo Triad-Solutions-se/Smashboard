@@ -6,10 +6,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 const ENDPOINT = "https://portal.triadsolutions.se/api/analytics/track";
 
 function getSessionId(): string {
-  let sid = sessionStorage.getItem("triad_sid");
+  let sid = localStorage.getItem("triad_sid");
   if (!sid) {
     sid = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).slice(0, 16);
-    sessionStorage.setItem("triad_sid", sid);
+    localStorage.setItem("triad_sid", sid);
   }
   return sid;
 }
