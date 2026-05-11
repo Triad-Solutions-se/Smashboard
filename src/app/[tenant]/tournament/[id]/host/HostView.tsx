@@ -1676,9 +1676,11 @@ function MatchCard({
 
   return (
     <div className="rounded-lg border bg-white dark:bg-zinc-900 p-2.5 border-zinc-200 dark:border-zinc-800">
-      <div className="flex justify-between items-center text-[10px] uppercase tracking-wide text-zinc-500 mb-1.5">
-        <span className="font-semibold">{courtName}</span>
-        <div className="flex items-center gap-1.5">
+      <div className="flex justify-between items-center mb-2 gap-2">
+        <span className="text-base font-bold text-zinc-900 dark:text-zinc-100 truncate">
+          {courtName}
+        </span>
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-zinc-500 shrink-0">
           <span
             className={`px-1.5 py-px rounded font-semibold ${badgeClass}`}
           >
@@ -1977,6 +1979,11 @@ function MatchRow({
           isBlocked ? "opacity-60" : ""
         }`}
       >
+        {courtName && (
+          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+            {courtName}
+          </span>
+        )}
         <span
           className="flex-1 min-w-0 text-right truncate"
           title={team1Label}
@@ -2061,6 +2068,11 @@ function MatchRow({
   return (
     <div className={`px-3 py-1 ${isBlocked ? "bg-zinc-50/60 dark:bg-zinc-900/40" : ""}`}>
       <div className="flex items-center gap-2">
+        {courtName && (
+          <span className="shrink-0 px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400">
+            {courtName}
+          </span>
+        )}
         <span
           className="flex-1 min-w-0 text-right text-sm font-medium truncate"
           title={team1Label}
@@ -2172,16 +2184,12 @@ function MatchRow({
         </div>
       </div>
 
-      {(courtName || (isBlocked && reason) || (isCompleted && editing)) && (
+      {((isBlocked && reason) || (isCompleted && editing)) && (
         <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400 pl-1">
-          {courtName && <span className="font-medium">{courtName}</span>}
           {isBlocked && reason && (
-            <>
-              {courtName && <span className="text-zinc-300">·</span>}
-              <span className="text-amber-600 dark:text-amber-400 font-medium truncate">
-                {reason}
-              </span>
-            </>
+            <span className="text-amber-600 dark:text-amber-400 font-medium truncate">
+              {reason}
+            </span>
           )}
           {isCompleted && editing && (
             <button
