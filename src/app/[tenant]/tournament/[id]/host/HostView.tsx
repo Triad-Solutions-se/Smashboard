@@ -911,7 +911,7 @@ function HostInner({
             onClick={() => void toggleFullscreen()}
             aria-label={isFullscreen ? "Avsluta helskärm" : "Helskärm"}
             title={isFullscreen ? "Avsluta helskärm" : "Helskärm"}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
           >
             {isFullscreen ? (
               <svg
@@ -942,7 +942,6 @@ function HostInner({
                 <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
               </svg>
             )}
-            <span className="hidden sm:inline">{isFullscreen ? "Avsluta" : "Helskärm"}</span>
           </button>
           <Link
             href={`/${tenant.slug}/tournament/${tournament.id}/display`}

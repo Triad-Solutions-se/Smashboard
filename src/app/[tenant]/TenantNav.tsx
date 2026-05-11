@@ -27,10 +27,31 @@ export function TenantNav({ slug, name, primaryColor, logoUrl, logoUrlDark }: Pr
   }
   const accent = primaryColor || "#10b981";
   const base = `/${slug}`;
-  const items = [
+  type NavItem = {
+    href: string;
+    label: string;
+    icon?: React.ReactNode;
+    iconOnly?: boolean;
+  };
+  const settingsIcon = (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="w-4 h-4"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M8.34 1.804A1 1 0 0 1 9.32 1h1.36a1 1 0 0 1 .98.804l.34 1.68a6.974 6.974 0 0 1 1.706.99l1.612-.612a1 1 0 0 1 1.196.44l.68 1.18a1 1 0 0 1-.22 1.234l-1.272 1.13a7.041 7.041 0 0 1 0 1.972l1.272 1.13a1 1 0 0 1 .22 1.234l-.68 1.18a1 1 0 0 1-1.196.44l-1.612-.612a6.974 6.974 0 0 1-1.706.99l-.34 1.68a1 1 0 0 1-.98.804H9.32a1 1 0 0 1-.98-.804l-.34-1.68a6.974 6.974 0 0 1-1.706-.99l-1.612.612a1 1 0 0 1-1.196-.44l-.68-1.18a1 1 0 0 1 .22-1.234l1.272-1.13a7.041 7.041 0 0 1 0-1.972l-1.272-1.13a1 1 0 0 1-.22-1.234l.68-1.18a1 1 0 0 1 1.196-.44l1.612.612a6.974 6.974 0 0 1 1.706-.99l.34-1.68ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+  const items: NavItem[] = [
     { href: base, label: "Sessioner" },
     { href: `${base}/players`, label: "Spelare" },
-    { href: `${base}/settings`, label: "Inställningar" },
+    { href: `${base}/settings`, label: "Inställningar", icon: settingsIcon, iconOnly: true },
   ];
 
   function isActive(href: string) {
@@ -84,13 +105,15 @@ export function TenantNav({ slug, name, primaryColor, logoUrl, logoUrlDark }: Pr
             <Link
               key={it.href}
               href={it.href}
-              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+              aria-label={it.iconOnly ? it.label : undefined}
+              title={it.iconOnly ? it.label : undefined}
+              className={`${it.iconOnly ? "h-8 w-8 inline-flex items-center justify-center" : "px-3 py-1.5"} rounded-md font-medium transition-colors ${
                 isActive(it.href)
                   ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-800"
               }`}
             >
-              {it.label}
+              {it.iconOnly && it.icon ? it.icon : it.label}
             </Link>
           ))}
         </nav>
@@ -133,14 +156,16 @@ export function TenantNav({ slug, name, primaryColor, logoUrl, logoUrlDark }: Pr
           <Link
             key={it.href}
             href={it.href}
-            className={`px-4 py-2 font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
+            aria-label={it.iconOnly ? it.label : undefined}
+            title={it.iconOnly ? it.label : undefined}
+            className={`${it.iconOnly ? "px-3 flex items-center" : "px-4"} py-2 font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
               isActive(it.href)
                 ? "text-zinc-900 dark:text-zinc-100"
                 : "text-zinc-500 dark:text-zinc-400 border-transparent hover:text-zinc-700 dark:hover:text-zinc-300"
             }`}
             style={isActive(it.href) ? { borderColor: accent } : undefined}
           >
-            {it.label}
+            {it.iconOnly && it.icon ? it.icon : it.label}
           </Link>
         ))}
         <form action="/auth/signout" method="post" className="ml-auto shrink-0">
