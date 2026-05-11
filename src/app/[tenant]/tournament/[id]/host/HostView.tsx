@@ -989,7 +989,13 @@ function HostInner({
           : "min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100"
       }
     >
-      <header className="sticky top-0 z-10 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 px-6 py-3 flex items-center justify-between gap-4 relative">
+      <header
+        className={`sticky top-0 z-10 px-6 py-3 flex items-center justify-between gap-4 relative ${
+          isFullscreen && tournamentPhase === "done"
+            ? "bg-transparent"
+            : "border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950"
+        }`}
+      >
         <div className="min-w-0">
           {!isFullscreen && (
             <>
@@ -1001,7 +1007,7 @@ function HostInner({
           )}
         </div>
 
-        {isFullscreen && (
+        {isFullscreen && tournamentPhase !== "done" && (
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 pointer-events-none">
             {tenant.logo_url && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -2038,9 +2044,9 @@ function WinnerTable({
   })();
 
   return (
-    <div className="relative overflow-hidden border-b border-amber-200/40 dark:border-zinc-800 bg-gradient-to-b from-amber-50/90 via-white to-amber-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
+    <div className="relative border-b border-amber-200/40 dark:border-zinc-800 bg-gradient-to-b from-amber-50/90 via-white to-amber-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
       <div
-        className="pointer-events-none absolute inset-x-0 -top-32 h-[28rem] bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.32),transparent_60%)] dark:bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.22),transparent_65%)]"
+        className="pointer-events-none absolute inset-x-0 -top-[8rem] sm:-top-[10rem] h-[34rem] bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.34),transparent_60%)] dark:bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.24),transparent_65%)]"
         aria-hidden
       />
       <div
