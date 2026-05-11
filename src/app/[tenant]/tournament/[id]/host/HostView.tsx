@@ -2088,7 +2088,7 @@ function WinnerTable({
 
         <div className="flex items-center justify-center gap-3 mb-3">
           <span
-            className="h-px w-10 sm:w-16"
+            className="h-px w-16 sm:w-24"
             style={{ background: `linear-gradient(to right, transparent, ${accent}aa)` }}
             aria-hidden
           />
@@ -2100,7 +2100,7 @@ function WinnerTable({
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="w-5 h-5 text-amber-600 dark:text-amber-400"
+            className="w-7 h-7 sm:w-9 sm:h-9 text-amber-600 dark:text-amber-400"
             aria-hidden="true"
           >
             <path d="M6 9H4a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1h3" />
@@ -2110,7 +2110,7 @@ function WinnerTable({
             <path d="M8 21h8" />
           </svg>
           <span
-            className="text-xs sm:text-sm font-black uppercase tracking-[0.32em] text-amber-700 dark:text-amber-300"
+            className="text-xl sm:text-3xl md:text-4xl font-black uppercase tracking-[0.3em] text-amber-700 dark:text-amber-300"
           >
             Resultat
           </span>
@@ -2122,7 +2122,7 @@ function WinnerTable({
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="w-5 h-5 text-amber-600 dark:text-amber-400"
+            className="w-7 h-7 sm:w-9 sm:h-9 text-amber-600 dark:text-amber-400"
             aria-hidden="true"
           >
             <path d="M6 9H4a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1h3" />
@@ -2132,7 +2132,7 @@ function WinnerTable({
             <path d="M8 21h8" />
           </svg>
           <span
-            className="h-px w-10 sm:w-16"
+            className="h-px w-16 sm:w-24"
             style={{ background: `linear-gradient(to left, transparent, ${accent}aa)` }}
             aria-hidden
           />
