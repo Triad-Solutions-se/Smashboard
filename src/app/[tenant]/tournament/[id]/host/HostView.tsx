@@ -1220,10 +1220,13 @@ function HostInner({
 
       {winners && winners.length > 0 && (
         <WinnerTable
+          tenant={tenant}
+          tournament={tournament}
           winners={winners}
           teamMap={teamMap}
           playerMap={playerMap}
           bracketMode={tournament.bracket_mode}
+          accent={accent}
         />
       )}
 
@@ -1878,52 +1881,49 @@ type WinnerPodiumRow = {
 
 const PODIUM_STYLES = {
   1: {
-    barHeight: "h-28 sm:h-32",
+    barHeight: "h-36 sm:h-44",
     barGradient:
       "from-amber-200 via-amber-400 to-amber-600 dark:from-amber-300 dark:via-amber-500 dark:to-amber-700",
     barShadow:
-      "shadow-[0_10px_30px_-12px_rgba(245,158,11,0.55)] dark:shadow-[0_10px_30px_-10px_rgba(245,158,11,0.55)]",
-    avatarRing: "ring-amber-400/70 dark:ring-amber-300/70",
+      "shadow-[0_18px_40px_-16px_rgba(245,158,11,0.65)] dark:shadow-[0_18px_40px_-12px_rgba(245,158,11,0.55)]",
+    avatarRing: "ring-amber-400/80 dark:ring-amber-300/80",
     avatarGlow:
-      "shadow-[0_0_0_6px_rgba(251,191,36,0.18)] dark:shadow-[0_0_0_6px_rgba(251,191,36,0.16)]",
+      "shadow-[0_0_0_8px_rgba(251,191,36,0.22)] dark:shadow-[0_0_0_8px_rgba(251,191,36,0.18)]",
     avatarGradient:
-      "bg-gradient-to-br from-amber-200 to-amber-500 dark:from-amber-300 dark:to-amber-600",
-    badgeBg: "bg-amber-500 dark:bg-amber-400",
-    badgeText: "text-amber-950",
+      "bg-gradient-to-br from-amber-100 via-amber-300 to-amber-500 dark:from-amber-200 dark:via-amber-400 dark:to-amber-600",
+    initialsText: "text-amber-950",
     numberText: "text-amber-950",
     label: "Guld",
     labelColor: "text-amber-700 dark:text-amber-300",
   },
   2: {
-    barHeight: "h-20 sm:h-24",
+    barHeight: "h-28 sm:h-32",
     barGradient:
-      "from-emerald-300 via-emerald-500 to-emerald-700 dark:from-emerald-400 dark:via-emerald-600 dark:to-emerald-800",
+      "from-zinc-100 via-zinc-300 to-zinc-400 dark:from-zinc-300 dark:via-zinc-400 dark:to-zinc-500",
     barShadow:
-      "shadow-[0_10px_24px_-12px_rgba(16,185,129,0.5)] dark:shadow-[0_10px_24px_-10px_rgba(16,185,129,0.5)]",
-    avatarRing: "ring-emerald-400/70 dark:ring-emerald-400/70",
+      "shadow-[0_14px_30px_-14px_rgba(82,82,91,0.55)] dark:shadow-[0_14px_30px_-12px_rgba(161,161,170,0.5)]",
+    avatarRing: "ring-zinc-300 dark:ring-zinc-400/80",
     avatarGlow:
-      "shadow-[0_0_0_6px_rgba(16,185,129,0.16)] dark:shadow-[0_0_0_6px_rgba(16,185,129,0.16)]",
+      "shadow-[0_0_0_8px_rgba(212,212,216,0.45)] dark:shadow-[0_0_0_8px_rgba(161,161,170,0.25)]",
     avatarGradient:
-      "bg-gradient-to-br from-emerald-200 to-emerald-500 dark:from-emerald-300 dark:to-emerald-600",
-    badgeBg: "bg-emerald-500 dark:bg-emerald-400",
-    badgeText: "text-emerald-950",
-    numberText: "text-emerald-50",
+      "bg-gradient-to-br from-white via-zinc-200 to-zinc-400 dark:from-zinc-200 dark:via-zinc-300 dark:to-zinc-500",
+    initialsText: "text-zinc-800",
+    numberText: "text-zinc-800",
     label: "Silver",
-    labelColor: "text-emerald-700 dark:text-emerald-300",
+    labelColor: "text-zinc-600 dark:text-zinc-300",
   },
   3: {
-    barHeight: "h-16 sm:h-20",
+    barHeight: "h-24 sm:h-28",
     barGradient:
       "from-orange-300 via-orange-500 to-orange-700 dark:from-orange-400 dark:via-orange-600 dark:to-orange-800",
     barShadow:
-      "shadow-[0_10px_24px_-12px_rgba(234,88,12,0.5)] dark:shadow-[0_10px_24px_-10px_rgba(234,88,12,0.5)]",
-    avatarRing: "ring-orange-400/70 dark:ring-orange-400/70",
+      "shadow-[0_14px_30px_-14px_rgba(234,88,12,0.6)] dark:shadow-[0_14px_30px_-12px_rgba(234,88,12,0.5)]",
+    avatarRing: "ring-orange-400/80 dark:ring-orange-400/80",
     avatarGlow:
-      "shadow-[0_0_0_6px_rgba(234,88,12,0.16)] dark:shadow-[0_0_0_6px_rgba(234,88,12,0.16)]",
+      "shadow-[0_0_0_8px_rgba(234,88,12,0.22)] dark:shadow-[0_0_0_8px_rgba(234,88,12,0.2)]",
     avatarGradient:
-      "bg-gradient-to-br from-orange-200 to-orange-500 dark:from-orange-300 dark:to-orange-600",
-    badgeBg: "bg-orange-500 dark:bg-orange-400",
-    badgeText: "text-orange-950",
+      "bg-gradient-to-br from-orange-200 via-orange-400 to-orange-600 dark:from-orange-300 dark:via-orange-500 dark:to-orange-700",
+    initialsText: "text-orange-50",
     numberText: "text-orange-50",
     label: "Brons",
     labelColor: "text-orange-700 dark:text-orange-400",
@@ -1950,13 +1950,13 @@ function PodiumColumn({
     return letters || "–";
   };
   return (
-    <div className="flex-1 flex flex-col items-center min-w-0 max-w-[140px] sm:max-w-[160px]">
+    <div className="flex-1 flex flex-col items-center min-w-0 max-w-[160px] sm:max-w-[200px]">
       {position === 1 && (
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 18"
           fill="currentColor"
-          className="w-7 h-5 text-amber-500 dark:text-amber-400 mb-1 drop-shadow"
+          className="w-9 h-7 sm:w-11 sm:h-8 text-amber-500 dark:text-amber-400 mb-1 drop-shadow"
           aria-hidden="true"
         >
           <path d="M2 4l4 6 6-9 6 9 4-6-2 12H4z" />
@@ -1964,35 +1964,33 @@ function PodiumColumn({
         </svg>
       )}
       <div
-        className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-full ${s.avatarGradient} ${s.avatarGlow} ring-2 ${s.avatarRing} flex items-center justify-center mb-2`}
+        className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full ${s.avatarGradient} ${s.avatarGlow} ring-2 ${s.avatarRing} flex items-center justify-center mb-3`}
       >
         <span
-          className={`text-sm sm:text-base font-black tracking-wide ${
-            position === 1 ? "text-amber-950" : "text-white drop-shadow"
-          }`}
+          className={`text-lg sm:text-2xl font-black tracking-wide ${s.initialsText}`}
         >
           {initials(name)}
         </span>
       </div>
-      <div className="mb-2 flex flex-col items-center text-center w-full px-1">
+      <div className="mb-3 flex flex-col items-center text-center w-full px-1">
         <div
-          className={`text-[10px] uppercase tracking-widest font-bold ${s.labelColor}`}
+          className={`text-[10px] sm:text-xs uppercase tracking-[0.25em] font-black ${s.labelColor}`}
         >
           {s.label}
         </div>
-        <div className="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-tight break-words max-w-full">
+        <div className="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-50 leading-snug break-words max-w-full mt-1">
           {name ?? "–"}
         </div>
         {subname && (
-          <div className="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-tight break-words max-w-full">
+          <div className="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-50 leading-snug break-words max-w-full">
             {subname}
           </div>
         )}
       </div>
       <div
-        className={`relative w-full ${s.barHeight} rounded-t-lg bg-gradient-to-b ${s.barGradient} ${s.barShadow} flex items-start justify-center pt-2`}
+        className={`relative w-full ${s.barHeight} rounded-t-xl bg-gradient-to-b ${s.barGradient} ${s.barShadow} flex items-start justify-center pt-3`}
       >
-        <span className={`text-3xl sm:text-4xl font-black ${s.numberText}`}>
+        <span className={`text-4xl sm:text-5xl font-black ${s.numberText}`}>
           {position}
         </span>
       </div>
@@ -2001,15 +1999,21 @@ function PodiumColumn({
 }
 
 function WinnerTable({
+  tenant,
+  tournament,
   winners,
   teamMap,
   playerMap,
   bracketMode,
+  accent,
 }: {
+  tenant: Tenant;
+  tournament: Tournament;
   winners: WinnerPodiumRow[];
   teamMap: Map<string, TournamentTeam>;
   playerMap: Map<string, Player>;
   bracketMode: "single" | "split";
+  accent: string;
 }) {
   const nameOf = (id: string | null): string | null => {
     if (!id) return null;
@@ -2019,66 +2023,172 @@ function WinnerTable({
 
   const showBracketLabel = winners.length > 1 || winners[0]?.bracket != null;
 
+  const dateString = (() => {
+    const iso = tournament.scheduled_at ?? tournament.created_at;
+    if (!iso) return null;
+    try {
+      return new Date(iso).toLocaleDateString("sv-SE", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    } catch {
+      return null;
+    }
+  })();
+
   return (
-    <div className="relative overflow-hidden border-b border-amber-200/60 dark:border-zinc-800 bg-gradient-to-b from-amber-50 via-white to-white dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-900 px-5 pt-5 pb-2">
+    <div className="relative overflow-hidden border-b border-amber-200/40 dark:border-zinc-800 bg-gradient-to-b from-amber-50/90 via-white to-amber-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.22),transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.14),transparent_60%)]"
+        className="pointer-events-none absolute inset-x-0 -top-32 h-[28rem] bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.32),transparent_60%)] dark:bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.22),transparent_65%)]"
         aria-hidden
       />
-      <div className="relative flex items-center justify-center gap-2 mb-5">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="w-5 h-5 text-amber-500 dark:text-amber-400"
-          aria-hidden="true"
-        >
-          <path d="M6 9H4a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1h3" />
-          <path d="M18 9h2a2 2 0 0 0 2-2V5a1 1 0 0 0-1-1h-3" />
-          <path d="M6 4h12v7a6 6 0 0 1-12 0V4Z" />
-          <path d="M12 17v4" />
-          <path d="M8 21h8" />
-        </svg>
-        <h2 className="text-base font-bold tracking-wide text-zinc-900 dark:text-zinc-100">
-          Vinnare
-        </h2>
-      </div>
-
       <div
-        className="relative grid gap-8"
-        style={{
-          gridTemplateColumns: `repeat(${winners.length}, minmax(0, 1fr))`,
-        }}
-      >
-        {winners.map((w) => {
-          const first = nameOf(w.first);
-          const second = nameOf(w.second);
-          const third = nameOf(w.third);
-          const thirdAlt = nameOf(w.thirdAlt);
-          return (
-            <div
-              key={w.bracket ?? "main"}
-              className="flex flex-col items-center"
-            >
-              {showBracketLabel && (
-                <div className="text-[10px] uppercase tracking-widest font-bold text-zinc-500 dark:text-zinc-400 mb-3">
-                  {w.bracket
-                    ? bracketLabelForMode(w.bracket, bracketMode)
-                    : "Slutställning"}
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(to_top,rgba(251,191,36,0.06),transparent)] dark:bg-[linear-gradient(to_top,rgba(251,191,36,0.05),transparent)]"
+        aria-hidden
+      />
+
+      <div className="relative px-6 pt-10 pb-10 max-w-4xl mx-auto">
+        {(tenant.logo_url || tenant.logo_url_dark) && (
+          <div className="flex justify-center mb-6">
+            {tenant.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={tenant.logo_url}
+                alt={tenant.name}
+                className={`h-16 sm:h-24 w-auto object-contain ${tenant.logo_url_dark ? "dark:hidden" : ""}`}
+              />
+            )}
+            {tenant.logo_url_dark && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={tenant.logo_url_dark}
+                alt={tenant.name}
+                className={`h-16 sm:h-24 w-auto object-contain ${tenant.logo_url ? "hidden dark:block" : ""}`}
+              />
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <span
+            className="h-px w-10 sm:w-16"
+            style={{ background: `linear-gradient(to right, transparent, ${accent}aa)` }}
+            aria-hidden
+          />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-5 h-5 text-amber-600 dark:text-amber-400"
+            aria-hidden="true"
+          >
+            <path d="M6 9H4a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1h3" />
+            <path d="M18 9h2a2 2 0 0 0 2-2V5a1 1 0 0 0-1-1h-3" />
+            <path d="M6 4h12v7a6 6 0 0 1-12 0V4Z" />
+            <path d="M12 17v4" />
+            <path d="M8 21h8" />
+          </svg>
+          <span
+            className="text-xs sm:text-sm font-black uppercase tracking-[0.32em] text-amber-700 dark:text-amber-300"
+          >
+            Resultat
+          </span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-5 h-5 text-amber-600 dark:text-amber-400"
+            aria-hidden="true"
+          >
+            <path d="M6 9H4a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1h3" />
+            <path d="M18 9h2a2 2 0 0 0 2-2V5a1 1 0 0 0-1-1h-3" />
+            <path d="M6 4h12v7a6 6 0 0 1-12 0V4Z" />
+            <path d="M12 17v4" />
+            <path d="M8 21h8" />
+          </svg>
+          <span
+            className="h-px w-10 sm:w-16"
+            style={{ background: `linear-gradient(to left, transparent, ${accent}aa)` }}
+            aria-hidden
+          />
+        </div>
+
+        <h2 className="text-center text-3xl sm:text-5xl md:text-6xl font-black tracking-tight text-zinc-900 dark:text-zinc-50 leading-[1.05]">
+          {tournament.name}
+        </h2>
+
+        <p className="text-center text-sm sm:text-base text-zinc-500 dark:text-zinc-400 mt-2 font-medium">
+          {tenant.name}
+          {dateString ? ` · ${dateString}` : null}
+        </p>
+
+        <div
+          className="relative grid gap-10 mt-10"
+          style={{
+            gridTemplateColumns: `repeat(${winners.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {winners.map((w) => {
+            const first = nameOf(w.first);
+            const second = nameOf(w.second);
+            const third = nameOf(w.third);
+            const thirdAlt = nameOf(w.thirdAlt);
+            return (
+              <div
+                key={w.bracket ?? "main"}
+                className="flex flex-col items-center"
+              >
+                {showBracketLabel && (
+                  <div
+                    className="text-[10px] sm:text-xs uppercase tracking-[0.28em] font-black mb-5 px-4 py-1.5 rounded-full border"
+                    style={{
+                      borderColor: `${accent}55`,
+                      color: accent,
+                      backgroundColor: `${accent}10`,
+                    }}
+                  >
+                    {w.bracket
+                      ? bracketLabelForMode(w.bracket, bracketMode)
+                      : "Slutställning"}
+                  </div>
+                )}
+                <div className="w-full max-w-lg flex items-end justify-center gap-2 sm:gap-3">
+                  <PodiumColumn position={2} name={second} />
+                  <PodiumColumn position={1} name={first} />
+                  <PodiumColumn position={3} name={third} subname={thirdAlt} />
                 </div>
-              )}
-              <div className="w-full max-w-md flex items-end justify-center gap-2 sm:gap-3">
-                <PodiumColumn position={2} name={second} />
-                <PodiumColumn position={1} name={first} />
-                <PodiumColumn position={3} name={third} subname={thirdAlt} />
+                <div
+                  className="w-full max-w-lg h-1.5 mt-0 rounded-b bg-gradient-to-r from-transparent via-zinc-300 to-transparent dark:via-zinc-700"
+                  aria-hidden
+                />
+                <div
+                  className="w-full max-w-md h-6 mt-0 rounded-b-full bg-gradient-to-b from-zinc-200/60 to-transparent dark:from-zinc-800/60 dark:to-transparent blur-sm"
+                  aria-hidden
+                />
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        <div className="mt-8 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.25em] font-semibold text-zinc-400 dark:text-zinc-500">
+          <span>Drivs av</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icons/triad-logo.png"
+            alt="Triad Solutions"
+            className="h-4 w-auto opacity-70"
+          />
+          <span>Triad Solutions</span>
+        </div>
       </div>
     </div>
   );
