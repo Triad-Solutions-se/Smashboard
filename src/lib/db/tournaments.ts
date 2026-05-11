@@ -421,6 +421,74 @@ export async function getRoundRests(
   return (data ?? []) as RoundRest[];
 }
 
+export async function updateGamesPerMatch(
+  id: string,
+  gamesPerMatch: number
+): Promise<void> {
+  const { error } = await supabaseClient
+    .from("tournaments")
+    .update({ games_per_match: gamesPerMatch })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// Reassigns scheduled (un-played) group-stage matches round-robin across the
+// given courts, preserving the per-(group, round) distribution shape that
+// generateGroupMatches uses at activation. KO matches and any in-progress or
+// completed matches are left untouched.
+export async function reassignScheduledGroupCourts(
+  tournamentId: string,
+  courtIds: string[]
+): Promise<void> {
+  if (courtIds.length === 0) {
+    throw new Error("Minst en bana måste vara vald.");
+  }
+  const sb = supabaseClient;
+  const { data, error } = await sb
+    .from("tournament_matches")
+    .select("id, group_id, round_number, court_id, created_at")
+    .eq("tournament_id", tournamentId)
+    .eq("stage", "group")
+    .eq("status", "scheduled")
+    .order("round_number")
+    .order("created_at")
+    .order("id");
+  if (error) throw error;
+  const matches = (data ?? []) as Array<{
+    id: string;
+    group_id: string | null;
+    round_number: number;
+    court_id: string | null;
+    created_at: string;
+  }>;
+
+  const buckets = new Map<string, typeof matches>();
+  for (const m of matches) {
+    const key = `${m.group_id ?? ""}:${m.round_number}`;
+    const arr = buckets.get(key) ?? [];
+    arr.push(m);
+    buckets.set(key, arr);
+  }
+
+  const updates: Array<{ id: string; court_id: string }> = [];
+  for (const arr of buckets.values()) {
+    arr.forEach((m, idx) => {
+      const newCourt = courtIds[idx % courtIds.length];
+      if (m.court_id !== newCourt) {
+        updates.push({ id: m.id, court_id: newCourt });
+      }
+    });
+  }
+
+  for (const u of updates) {
+    const { error: updErr } = await sb
+      .from("tournament_matches")
+      .update({ court_id: u.court_id })
+      .eq("id", u.id);
+    if (updErr) throw updErr;
+  }
+}
+
 export async function updateTournamentPlayoffSettings(
   id: string,
   advancesPerGroup: number | null,

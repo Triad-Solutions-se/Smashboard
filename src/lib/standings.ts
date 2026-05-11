@@ -73,6 +73,15 @@ export function computeStandings(
       gd: 0,
     });
   }
+  const h2h = new Map<string, Map<string, number>>();
+  const bumpH2H = (a: string, b: string, diff: number) => {
+    let inner = h2h.get(a);
+    if (!inner) {
+      inner = new Map();
+      h2h.set(a, inner);
+    }
+    inner.set(b, (inner.get(b) ?? 0) + diff);
+  };
   for (const m of matches) {
     if (m.status !== "completed") continue;
     if (m.score_team1 == null || m.score_team2 == null) continue;
@@ -85,11 +94,22 @@ export function computeStandings(
     t1.ga += m.score_team2;
     t2.gf += m.score_team2;
     t2.ga += m.score_team1;
+    const diff = m.score_team1 - m.score_team2;
+    bumpH2H(m.team1_id, m.team2_id, diff);
+    bumpH2H(m.team2_id, m.team1_id, -diff);
   }
   for (const s of map.values()) {
     s.gd = s.gf - s.ga;
   }
+  const headToHead = (aId: string, bId: string): number => {
+    return h2h.get(aId)?.get(bId) ?? 0;
+  };
   return [...map.values()].sort(
-    (a, b) => b.gf - a.gf || b.gd - a.gd || a.ga - b.ga || a.team_id.localeCompare(b.team_id)
+    (a, b) =>
+      b.gf - a.gf ||
+      b.gd - a.gd ||
+      a.ga - b.ga ||
+      headToHead(b.team_id, a.team_id) ||
+      a.team_id.localeCompare(b.team_id)
   );
 }

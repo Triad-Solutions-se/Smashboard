@@ -14,7 +14,14 @@ import type {
   MatchStage,
 } from "@/lib/supabase/types";
 import { updateMatchScore } from "@/lib/db/matches";
-import { setPlayerPaid, insertMatches, getRoundRests, completeTournament } from "@/lib/db/tournaments";
+import {
+  setPlayerPaid,
+  insertMatches,
+  getRoundRests,
+  completeTournament,
+  updateGamesPerMatch,
+  reassignScheduledGroupCourts,
+} from "@/lib/db/tournaments";
 import { computeStandings, teamName, stageLabel, shortTeamName } from "@/lib/standings";
 import { PaymentPanel, type PaymentPlayerRow } from "@/components/PaymentPanel";
 import {
@@ -694,6 +701,7 @@ function HostInner({
   const [completing, setCompleting] = useState(false);
   const [completeErr, setCompleteErr] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const unpaidCount = useMemo(
     () => paymentRows.filter((r) => !r.paid).length,
@@ -873,6 +881,31 @@ function HostInner({
               </span>
             )}
           </button>
+          {tournament.status === "active" && (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Inställningar"
+              title="Inställningar"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-4 h-4 text-zinc-500"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+              </svg>
+              <span className="hidden sm:inline">Inställningar</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void toggleFullscreen()}
@@ -1094,6 +1127,21 @@ function HostInner({
             onSetPaid={handleSetPaid}
           />
         </PaymentModal>
+      )}
+
+      {settingsOpen && (
+        <SessionSettingsModal onClose={() => setSettingsOpen(false)}>
+          <SessionSettingsPanel
+            tournament={tournament}
+            courts={courts}
+            matches={matches}
+            accent={tenant.primary_color || "#10b981"}
+            onSaved={async () => {
+              setSettingsOpen(false);
+              await reload();
+            }}
+          />
+        </SessionSettingsModal>
       )}
     </div>
   );
@@ -2412,3 +2460,223 @@ function PaymentModal({
   );
 }
 
+function SessionSettingsModal({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-end p-4 bg-zinc-950/40"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Inställningar"
+    >
+      <div
+        className="w-full max-w-md max-h-[90vh] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Inställningar</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Stäng"
+            className="h-8 w-8 rounded text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden>
+              <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L8.94 10l-4.72 4.72a.75.75 0 1 0 1.06 1.06L10 11.06l4.72 4.72a.75.75 0 1 0 1.06-1.06L11.06 10l4.72-4.72a.75.75 0 0 0-1.06-1.06L10 8.94 5.28 4.22Z" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function SessionSettingsPanel({
+  tournament,
+  courts,
+  matches,
+  accent,
+  onSaved,
+}: {
+  tournament: Tournament;
+  courts: Court[];
+  matches: TournamentMatch[];
+  accent: string;
+  onSaved: () => void | Promise<void>;
+}) {
+  // Courts currently in use by remaining (scheduled) group matches.
+  const courtsInUseForScheduled = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of matches) {
+      if (m.stage !== "group") continue;
+      if (m.status !== "scheduled") continue;
+      if (m.court_id) ids.add(m.court_id);
+    }
+    return ids;
+  }, [matches]);
+
+  const scheduledGroupCount = useMemo(
+    () =>
+      matches.filter((m) => m.stage === "group" && m.status === "scheduled")
+        .length,
+    [matches]
+  );
+
+  const [games, setGames] = useState<number>(tournament.games_per_match);
+  const [selectedCourts, setSelectedCourts] = useState<Set<string>>(() => {
+    if (courtsInUseForScheduled.size > 0) {
+      return new Set(courtsInUseForScheduled);
+    }
+    return new Set(courts.map((c) => c.id));
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const initialCourtIds = useMemo(() => {
+    const arr = [...courtsInUseForScheduled];
+    arr.sort();
+    return arr.join(",");
+  }, [courtsInUseForScheduled]);
+  const currentCourtIds = useMemo(() => {
+    const arr = [...selectedCourts];
+    arr.sort();
+    return arr.join(",");
+  }, [selectedCourts]);
+  const courtsDirty = initialCourtIds !== currentCourtIds;
+  const gamesDirty = games !== tournament.games_per_match;
+  const gamesValid = Number.isInteger(games) && games >= 1 && games <= 99;
+  const courtsValid = selectedCourts.size >= 1;
+  const canSave =
+    (gamesDirty || courtsDirty) && gamesValid && courtsValid && !saving;
+
+  function toggleCourt(id: string) {
+    setSelectedCourts((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setErr(null);
+    setSaving(true);
+    try {
+      if (gamesDirty && gamesValid) {
+        await updateGamesPerMatch(tournament.id, games);
+      }
+      if (courtsDirty && courtsValid) {
+        await reassignScheduledGroupCourts(tournament.id, [...selectedCourts]);
+      }
+      await onSaved();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-2">
+        <label
+          htmlFor="settings-games-per-match"
+          className="text-sm font-semibold text-zinc-800 dark:text-zinc-100"
+        >
+          Mål per match
+        </label>
+        <p className="text-xs text-zinc-500">
+          Antal game vinnaren behöver. Påverkar bara matcher som inte är
+          inrapporterade ännu.
+        </p>
+        <input
+          id="settings-games-per-match"
+          type="number"
+          min={1}
+          max={99}
+          value={Number.isFinite(games) ? games : ""}
+          onChange={(e) => {
+            const v = e.target.valueAsNumber;
+            setGames(Number.isFinite(v) ? v : 0);
+          }}
+          className="w-24 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm tabular-nums"
+        />
+        {!gamesValid && (
+          <p className="text-xs text-red-600">Måste vara mellan 1 och 99.</p>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
+          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            Banor för kommande matcher
+          </h3>
+          <p className="text-xs text-zinc-500">
+            Avmarkera en bana om den inte längre kan användas. Kvarvarande
+            gruppspelsmatcher (
+            <span className="tabular-nums">{scheduledGroupCount}</span>) fördelas
+            om jämnt över de valda banorna. Spelade matcher rörs inte.
+          </p>
+        </div>
+        {courts.length === 0 ? (
+          <p className="text-xs text-zinc-500 italic">
+            Inga banor är registrerade för anläggningen.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {courts.map((c) => {
+              const checked = selectedCourts.has(c.id);
+              return (
+                <li key={c.id}>
+                  <label className="flex items-center gap-3 px-3 py-2 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleCourt(c.id)}
+                      className="h-4 w-4 accent-emerald-600"
+                    />
+                    <span className="font-medium">{c.name}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {!courtsValid && (
+          <p className="text-xs text-red-600">
+            Minst en bana måste vara vald.
+          </p>
+        )}
+      </section>
+
+      {err && <p className="text-xs text-red-600">{err}</p>}
+
+      <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!canSave}
+          className="px-4 py-2 rounded-md text-white text-sm font-semibold disabled:opacity-50 transition-opacity"
+          style={{ backgroundColor: accent }}
+        >
+          {saving ? "Sparar…" : "Spara"}
+        </button>
+      </div>
+    </div>
+  );
+}
