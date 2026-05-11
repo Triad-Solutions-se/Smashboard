@@ -10,6 +10,26 @@ function nextPowerOf2(n: number): number {
   return p;
 }
 
+// Standard tennis-draw seed→slot mapping. Returns an array of length B (a power
+// of 2) where index i holds the 1-indexed seed assigned to slot i.
+//   B=2 → [1,2]
+//   B=4 → [1,4,2,3]
+//   B=8 → [1,8,4,5,2,7,3,6]
+// This keeps top seeds in opposite halves, so they can only meet in later rounds.
+export function standardSeedSlots(B: number): number[] {
+  if (B < 2 || (B & (B - 1)) !== 0) {
+    throw new Error(`standardSeedSlots requires a power of 2 ≥ 2, got ${B}`);
+  }
+  if (B === 2) return [1, 2];
+  const prev = standardSeedSlots(B / 2);
+  const out: number[] = [];
+  for (const s of prev) {
+    out.push(s);
+    out.push(B + 1 - s);
+  }
+  return out;
+}
+
 // Determines the first KO stage given the number of advancing teams.
 export function firstKOStage(totalAdvancing: number): MatchStage {
   if (totalAdvancing <= 2) return "final";
@@ -73,6 +93,9 @@ function bracketCourts(
 // `byeGroupIds` is kept for API-compatibility but unused (byes are computed
 // internally per bracket — top seeds get internal byes when bracket size is
 // not a power of two).
+//
+// Pass `formation: "seeded"` (plus `qualifiedTeams`) to generate one unified
+// tennis-draw-seeded bracket instead. See `generateSeededFirstRound`.
 export function generateFirstKORound(
   groupStandings: GroupStanding[],
   byeGroupIds: string[],
@@ -368,6 +391,233 @@ function makeMatch(
     stage,
     bracket,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Seeded (cross-group) bracket — single unified bracket
+// ---------------------------------------------------------------------------
+
+// Input shape for the seeded path. Each entry is one qualifying team with the
+// info needed to compute an overall seed.
+export type QualifiedTeam = {
+  team_id: string;
+  groupId: string;
+  // 0-based rank within the team's group (0 = group winner). Used as the
+  // primary tier when no manual seed is given.
+  rank: number;
+  // Manual seed override from `tournament_teams.seed` (1-indexed, 1 = best).
+  manualSeed: number | null;
+  // Standings tiebreakers, only consulted when manual seed is absent.
+  gf: number;
+  gd: number;
+  ga: number;
+};
+
+// Computes the overall seed order from a flat list of qualified teams.
+//
+// Rules:
+//   1. Teams with a manual seed sort first, by manualSeed asc.
+//   2. Remaining teams sort by (rank asc, GF desc, GD desc, GA asc, team_id asc).
+// The returned array index + 1 is the 1-indexed overall seed.
+export function computeSeedOrder(qualified: QualifiedTeam[]): QualifiedTeam[] {
+  return [...qualified].sort((a, b) => {
+    const am = a.manualSeed;
+    const bm = b.manualSeed;
+    if (am != null && bm != null) return am - bm;
+    if (am != null) return -1;
+    if (bm != null) return 1;
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    if (a.gf !== b.gf) return b.gf - a.gf;
+    if (a.gd !== b.gd) return b.gd - a.gd;
+    if (a.ga !== b.ga) return a.ga - b.ga;
+    return a.team_id.localeCompare(b.team_id);
+  });
+}
+
+// Builds the slot array for a seeded bracket. Returns length B = nextPow2(N),
+// where each slot holds a team_id or null (BYE). Slot positions follow
+// `standardSeedSlots`, so seed S goes to slot where standardSeedSlots(B)[i] === S.
+export function buildBracketSlots(
+  seedOrderedTeamIds: string[]
+): (string | null)[] {
+  const N = seedOrderedTeamIds.length;
+  if (N < 2) return seedOrderedTeamIds.slice();
+  const B = nextPowerOf2(N);
+  const slotSeeds = standardSeedSlots(B);
+  const slots: (string | null)[] = new Array(B).fill(null);
+  for (let i = 0; i < B; i++) {
+    const seed = slotSeeds[i]; // 1-indexed
+    slots[i] = seed <= N ? seedOrderedTeamIds[seed - 1] : null;
+  }
+  return slots;
+}
+
+// Stage selector for a seeded bracket of M pair-entrants going into the next
+// round. M = bracketSize / 2 after round 1, M / 2 after each subsequent round.
+function seededStageForRound(m: number): MatchStage {
+  if (m <= 2) return "final";
+  if (m <= 4) return "semi_final";
+  return "quarter_final";
+}
+
+// Anti-rematch swap: scans paired-up first-round matches and, for any pair with
+// both teams in the same group, swaps one of the teams with a team in the
+// opposite half of the bracket whose swap resolves the conflict without
+// creating a new one. Operates in-place on the slot array.
+function applyAntiRematchSwap(
+  slots: (string | null)[],
+  groupIdByTeam: Map<string, string>
+): void {
+  const B = slots.length;
+  if (B < 4) return;
+  const halfSize = B / 2;
+  // For each pair (2i, 2i+1), if same group, try swapping the slot at 2i+1
+  // with a slot in the opposite half that fixes it.
+  for (let i = 0; i < B; i += 2) {
+    const a = slots[i];
+    const b = slots[i + 1];
+    if (!a || !b) continue;
+    const ga = groupIdByTeam.get(a);
+    const gb = groupIdByTeam.get(b);
+    if (!ga || !gb || ga !== gb) continue;
+
+    // Find a candidate slot in the opposite half whose teams have different groups
+    // from both the current pair and the candidate's existing pair.
+    const oppStart = i < halfSize ? halfSize : 0;
+    const oppEnd = oppStart + halfSize;
+    let swapped = false;
+    for (let j = oppStart; j < oppEnd; j++) {
+      const cand = slots[j];
+      if (!cand) continue;
+      const candGroup = groupIdByTeam.get(cand);
+      if (!candGroup) continue;
+      // candidate's pair sibling
+      const sibIdx = j % 2 === 0 ? j + 1 : j - 1;
+      const sib = slots[sibIdx];
+      const sibGroup = sib ? groupIdByTeam.get(sib) : null;
+      // Swap b ↔ cand. After swap:
+      //   new pair (a, cand): groups (ga, candGroup) — must differ
+      //   new pair (sib, b): groups (sibGroup, gb) — must differ (or sib is null)
+      if (candGroup === ga) continue;
+      if (sibGroup && sibGroup === gb) continue;
+      slots[i + 1] = cand;
+      slots[j] = b;
+      swapped = true;
+      break;
+    }
+    if (!swapped) {
+      // Best-effort: leave the rematch in place rather than break the bracket.
+      // Hosts can manually re-seed if this matters.
+    }
+  }
+}
+
+// Generates round 1 of a seeded bracket. Returns matches in pair-index order,
+// skipping pairs where one slot is a BYE (those teams advance automatically).
+// Callers can recover the pair-index of byes via `computeSeededByePairIndices`.
+export function generateSeededFirstRound(
+  qualified: QualifiedTeam[],
+  courts: Court[],
+  tournamentId: string,
+  bracket: string | null = null
+): GeneratedKOMatch[] {
+  if (qualified.length < 2) return [];
+  const seedOrder = computeSeedOrder(qualified);
+  const seedOrderedIds = seedOrder.map((q) => q.team_id);
+  const slots = buildBracketSlots(seedOrderedIds);
+  const groupIdByTeam = new Map<string, string>();
+  for (const q of qualified) groupIdByTeam.set(q.team_id, q.groupId);
+  applyAntiRematchSwap(slots, groupIdByTeam);
+
+  const B = slots.length;
+  const pairCount = B / 2;
+  // Stage follows bracket position, not match count — a 4-slot round is always
+  // SF even if there's only one real match (the other being a bye).
+  const stage = seededStageForRound(B);
+  const matches: GeneratedKOMatch[] = [];
+  let courtIdx = 0;
+  for (let p = 0; p < pairCount; p++) {
+    const a = slots[2 * p];
+    const b = slots[2 * p + 1];
+    if (!a || !b) continue; // BYE pair — the non-null team auto-advances
+    const court = courts.length > 0 ? courts[courtIdx % courts.length] : null;
+    courtIdx++;
+    matches.push(makeMatch(tournamentId, a, b, stage, court, 1, bracket));
+  }
+  return matches;
+}
+
+// Returns the pair-index (0-based) of each bye team in seed order, given the
+// flat seed-ordered list of qualifying team_ids. A "bye" is a top seed whose
+// slot pair contained a BYE marker. Pair indices are sorted ascending.
+export function computeSeededByePairIndices(
+  seedOrderedTeamIds: string[]
+): { teamId: string; pairIndex: number }[] {
+  const N = seedOrderedTeamIds.length;
+  if (N < 2) return [];
+  const B = nextPowerOf2(N);
+  if (B === N) return [];
+  const slotSeeds = standardSeedSlots(B);
+  // Map seed → slot index
+  const slotOf = new Map<number, number>();
+  for (let i = 0; i < B; i++) slotOf.set(slotSeeds[i], i);
+  const out: { teamId: string; pairIndex: number }[] = [];
+  for (let seed = N + 1; seed <= B; seed++) {
+    const byeSlot = slotOf.get(seed)!;
+    // sibling slot
+    const sibSlot = byeSlot ^ 1;
+    const sibSeed = slotSeeds[sibSlot];
+    if (sibSeed > N) continue; // both BYE — shouldn't happen with top-seed bye allocation
+    out.push({
+      teamId: seedOrderedTeamIds[sibSeed - 1],
+      pairIndex: byeSlot >> 1,
+    });
+  }
+  return out.sort((a, b) => a.pairIndex - b.pairIndex);
+}
+
+// Generates the next round of a seeded bracket. `pairEntrants` is the
+// pair-index-ordered list of teams entering this round (length M = prior-round
+// pair count). Adjacent pairs become matches; the host is responsible for
+// preserving pair order across rounds.
+export function generateSeededNextRound(
+  pairEntrants: string[],
+  courts: Court[],
+  tournamentId: string,
+  hasBronze: boolean,
+  losersForBronze: [string, string] | null,
+  roundNumber: number,
+  bracket: string | null = null
+): GeneratedKOMatch[] {
+  const M = pairEntrants.length;
+  if (M < 2) return [];
+  const stage = seededStageForRound(M);
+  const matches: GeneratedKOMatch[] = [];
+  let courtIdx = 0;
+  for (let i = 0; i < M; i += 2) {
+    const a = pairEntrants[i];
+    const b = pairEntrants[i + 1];
+    if (!a || !b) continue;
+    const court = courts.length > 0 ? courts[courtIdx % courts.length] : null;
+    courtIdx++;
+    matches.push(makeMatch(tournamentId, a, b, stage, court, roundNumber, bracket));
+  }
+  if (hasBronze && stage === "final" && losersForBronze) {
+    const bronzeCourt =
+      courts[Math.floor(courts.length / 2)] ?? courts[0] ?? null;
+    matches.push(
+      makeMatch(
+        tournamentId,
+        losersForBronze[0],
+        losersForBronze[1],
+        "bronze",
+        bronzeCourt,
+        roundNumber,
+        bracket
+      )
+    );
+  }
+  return matches;
 }
 
 // Returns the KO stage label from a set of KO matches in a single bracket.

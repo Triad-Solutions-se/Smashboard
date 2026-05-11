@@ -9,6 +9,7 @@ import type {
   TournamentTeam,
   Court,
   Player,
+  GroupFormation,
 } from "@/lib/supabase/types";
 import {
   updateDraftTeam,
@@ -18,6 +19,7 @@ import {
   insertMatches,
   insertRoundRests,
   assignTeamGroup,
+  assignTeamSeed,
   activateTournament,
 } from "@/lib/db/tournaments";
 import {
@@ -187,6 +189,14 @@ export function StartView({
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Lottning mode: "random" auto-distributes teams and seeds; "seeded" lets the
+  // host manually assign each team to a group and order seeds 1..N.
+  const [formation, setFormation] = useState<GroupFormation>("random");
+  // Group index (0..numGroups-1) per team_id, seeded mode only.
+  const [manualGroupIdx, setManualGroupIdx] = useState<Record<string, number>>({});
+  // Ordered list of team_ids; position+1 is the seed. Seeded mode only.
+  const [seededOrder, setSeededOrder] = useState<string[]>([]);
+
   // Auto pre-assign courts to groups when the host picks a group count.
   // Fires on mount and whenever numGroups changes; ignores fullTeamCount
   // changes so a host can pair a solo team without losing manual court edits.
@@ -220,7 +230,68 @@ export function StartView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numGroups, courts]);
 
+  // Display name for a team given the current pairing state (works for both
+  // already-full teams and solo teams that have a pending partner pick).
+  function teamDisplayName(team: TournamentTeam): string {
+    const p1 = playerMap.get(team.player1_id);
+    const p2id = team.player2_id ?? pairing[team.id] ?? null;
+    const p2 = p2id ? playerMap.get(p2id) : null;
+    return `${p1?.name ?? "?"} & ${p2?.name ?? "?"}`;
+  }
+
   const soloTeams = teams.filter((t) => !t.player2_id);
+
+  // List of team_ids the seeded UI is responsible for — every team that will
+  // be a "full team" after the host applies pending solo pairings. Keep this
+  // memoized so the sync effect below has a stable input.
+  const seededTeamIds = useMemo(() => {
+    return teams
+      .filter((t) => t.player2_id || pairing[t.id])
+      .map((t) => t.id);
+  }, [teams, pairing]);
+
+  // Keep manualGroupIdx covering exactly the current set of full teams, and
+  // clamp every assignment to the current numGroups range. Newly-added teams
+  // land in the currently smallest group so groups stay balanced by default.
+  useEffect(() => {
+    if (formation !== "seeded") return;
+    setManualGroupIdx((prev) => {
+      const counts = new Array(numGroups).fill(0);
+      for (const id of seededTeamIds) {
+        const existing = prev[id];
+        if (existing !== undefined && existing < numGroups) counts[existing]++;
+      }
+      const next: Record<string, number> = {};
+      for (const id of seededTeamIds) {
+        const existing = prev[id];
+        if (existing !== undefined && existing < numGroups) {
+          next[id] = existing;
+        } else {
+          let best = 0;
+          for (let g = 1; g < numGroups; g++) {
+            if (counts[g] < counts[best]) best = g;
+          }
+          next[id] = best;
+          counts[best]++;
+        }
+      }
+      const same =
+        Object.keys(prev).length === seededTeamIds.length &&
+        seededTeamIds.every((id) => prev[id] === next[id]);
+      return same ? prev : next;
+    });
+    setSeededOrder((prev) => {
+      const known = new Set(seededTeamIds);
+      const kept = prev.filter((id) => known.has(id));
+      const missing = seededTeamIds.filter((id) => !kept.includes(id));
+      const next = [...kept, ...missing];
+      if (next.length === prev.length && next.every((id, i) => id === prev[i])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [formation, seededTeamIds, numGroups]);
+
   const allUsed = useMemo(() => {
     const s = new Set<string>();
     for (const t of teams) {
@@ -300,6 +371,20 @@ export function StartView({
     Math.max(1, activeCourtsForEstimate),
   );
 
+  // For seeded mode: every group must be assigned at least one team, and the
+  // seed order must cover exactly the current set of full teams.
+  const seededGroupsAllPopulated = useMemo(() => {
+    if (formation !== "seeded") return true;
+    if (numGroups < 1) return false;
+    const counts = new Array(numGroups).fill(0);
+    for (const id of seededTeamIds) {
+      const g = manualGroupIdx[id];
+      if (g === undefined || g >= numGroups) return false;
+      counts[g]++;
+    }
+    return counts.every((c) => c >= 1);
+  }, [formation, numGroups, seededTeamIds, manualGroupIdx]);
+
   const canSubmit =
     formatSupported &&
     fullTeamCount >= 2 &&
@@ -308,7 +393,8 @@ export function StartView({
     allGroupsHaveCourts &&
     gamesPerMatch >= 1 &&
     numGroups >= 1 &&
-    fullTeamCount >= numGroups;
+    fullTeamCount >= numGroups &&
+    seededGroupsAllPopulated;
 
   function toggleCourt(id: string) {
     setSelectedCourts((prev) => {
@@ -359,7 +445,8 @@ export function StartView({
         });
       }
 
-      // 2. Distribute teams across groups (random shuffle).
+      // 2. Distribute teams across groups. Random mode shuffles and round-robins
+      //    into buckets; seeded mode honors the host's manual assignments.
       const fullTeams: TournamentTeam[] = teamsAfterPairing.filter(
         (t): t is TournamentTeam => !!t.player2_id
       );
@@ -368,9 +455,17 @@ export function StartView({
         { length: groupCount },
         () => []
       );
-      shuffle(fullTeams).forEach((t, i) => {
-        buckets[i % groupCount].push(t);
-      });
+      if (formation === "seeded") {
+        for (const t of fullTeams) {
+          const g = manualGroupIdx[t.id];
+          const target = g !== undefined && g < groupCount ? g : 0;
+          buckets[target].push(t);
+        }
+      } else {
+        shuffle(fullTeams).forEach((t, i) => {
+          buckets[i % groupCount].push(t);
+        });
+      }
       const nonEmpty = buckets.filter((b) => b.length > 0);
 
       // 3. Insert groups.
@@ -382,14 +477,26 @@ export function StartView({
         }))
       );
 
-      // 4. Assign group_id to each team.
+      // 4. Assign group_id (and, in seeded mode, seed) to each team.
       const teamsByGroup = new Map<string, TournamentTeam[]>();
+      // Build seed lookup once so the per-team loop is a constant-time read.
+      const seedByTeamId = new Map<string, number>();
+      if (formation === "seeded") {
+        const fullIds = new Set(fullTeams.map((t) => t.id));
+        const order = seededOrder.filter((id) => fullIds.has(id));
+        for (const id of fullIds) if (!order.includes(id)) order.push(id);
+        order.forEach((id, i) => seedByTeamId.set(id, i + 1));
+      }
       for (let gi = 0; gi < nonEmpty.length; gi++) {
         const groupId = insertedGroups[gi].id;
         const updated: TournamentTeam[] = [];
         for (const t of nonEmpty[gi]) {
           await assignTeamGroup(t.id, groupId);
-          updated.push({ ...t, group_id: groupId });
+          const seed = seedByTeamId.get(t.id) ?? null;
+          if (formation === "seeded") {
+            await assignTeamSeed(t.id, seed);
+          }
+          updated.push({ ...t, group_id: groupId, seed });
         }
         teamsByGroup.set(groupId, updated);
       }
@@ -426,7 +533,7 @@ export function StartView({
         num_groups: nonEmpty.length,
         games_per_match: gamesPerMatch,
         total_rounds: totalRounds,
-        formation: "random",
+        formation,
         advances_per_group: advancesPerGroup > 0 ? advancesPerGroup : null,
         has_bronze: hasBronze,
         qf_court_ids: [...qfCourtIds],
@@ -607,6 +714,157 @@ export function StartView({
               className="w-32 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
             />
           </div>
+        </section>
+
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+              Lottning
+            </h2>
+            <div
+              role="tablist"
+              className="inline-flex rounded-md border border-zinc-200 dark:border-zinc-700 p-0.5 text-xs"
+            >
+              {(
+                [
+                  { v: "random" as const, label: "Slumpa" },
+                  { v: "seeded" as const, label: "Manuell" },
+                ]
+              ).map((opt) => {
+                const active = formation === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setFormation(opt.v)}
+                    className="px-3 py-1 rounded font-medium transition"
+                    style={
+                      active
+                        ? { backgroundColor: accent, color: "#fff" }
+                        : { color: "#52525b" }
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {formation === "random" && (
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              Lagen lottas slumpmässigt till grupper. Slutspelet seedas efter
+              gruppspelets resultat.
+            </p>
+          )}
+          {formation === "seeded" && (() => {
+            const fullTeamObjs = teamsAfterPairing.filter(
+              (t) => !!t.player2_id
+            );
+            const teamById = new Map(fullTeamObjs.map((t) => [t.id, t]));
+            const orderedIds = seededOrder.filter((id) => teamById.has(id));
+            // Surface any teams not yet in the seed order (e.g. just paired).
+            for (const t of fullTeamObjs) {
+              if (!orderedIds.includes(t.id)) orderedIds.push(t.id);
+            }
+            return (
+              <div className="space-y-3">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Sätt seedning (1 = bästa) och välj grupp per lag. Korslottning
+                  i slutspel: seed 1 möter seed N, etc. Lag från samma grupp
+                  möts inte i första slutspelsrundan om det går att undvika.
+                </p>
+                {!seededGroupsAllPopulated && (
+                  <p className="text-xs text-amber-600">
+                    Varje grupp behöver minst ett lag.
+                  </p>
+                )}
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {orderedIds.map((id, idx) => {
+                    const team = teamById.get(id);
+                    if (!team) return null;
+                    const groupIdxVal = manualGroupIdx[id] ?? 0;
+                    return (
+                      <div
+                        key={id}
+                        className="flex items-center gap-2 py-2 text-sm"
+                      >
+                        <span className="inline-flex w-6 h-6 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                          {idx + 1}
+                        </span>
+                        <div className="flex-1 min-w-0 truncate">
+                          {teamDisplayName(team)}
+                        </div>
+                        {numGroups > 1 && (
+                          <select
+                            value={groupIdxVal}
+                            onChange={(e) => {
+                              const g = parseInt(e.target.value, 10);
+                              setManualGroupIdx((prev) => ({
+                                ...prev,
+                                [id]: g,
+                              }));
+                            }}
+                            className="px-2 py-1 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100 text-xs"
+                          >
+                            {Array.from({ length: numGroups }, (_, i) => (
+                              <option key={i} value={i}>
+                                Grupp {i + 1}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => {
+                              setSeededOrder((prev) => {
+                                const next = [...prev];
+                                const here = next.indexOf(id);
+                                if (here <= 0) return prev;
+                                [next[here - 1], next[here]] = [
+                                  next[here],
+                                  next[here - 1],
+                                ];
+                                return next;
+                              });
+                            }}
+                            className="w-6 h-5 rounded text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:hover:bg-transparent text-xs"
+                            aria-label="Flytta upp"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === orderedIds.length - 1}
+                            onClick={() => {
+                              setSeededOrder((prev) => {
+                                const next = [...prev];
+                                const here = next.indexOf(id);
+                                if (here < 0 || here >= next.length - 1)
+                                  return prev;
+                                [next[here], next[here + 1]] = [
+                                  next[here + 1],
+                                  next[here],
+                                ];
+                                return next;
+                              });
+                            }}
+                            className="w-6 h-5 rounded text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:hover:bg-transparent text-xs"
+                            aria-label="Flytta ned"
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </section>
 
         <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">

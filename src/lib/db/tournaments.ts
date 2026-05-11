@@ -245,6 +245,17 @@ export async function assignTeamGroup(
   if (error) throw error;
 }
 
+export async function assignTeamSeed(
+  teamId: string,
+  seed: number | null
+): Promise<void> {
+  const { error } = await supabaseClient
+    .from("tournament_teams")
+    .update({ seed })
+    .eq("id", teamId);
+  if (error) throw error;
+}
+
 export type ActivateTournamentInput = {
   num_groups: number;
   games_per_match: number;

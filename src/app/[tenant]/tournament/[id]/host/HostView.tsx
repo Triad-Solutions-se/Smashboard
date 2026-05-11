@@ -32,9 +32,13 @@ import {
 import {
   generateFirstKORound,
   generateNextKORound,
+  generateSeededFirstRound,
+  computeSeedOrder,
+  computeSeededByePairIndices,
   bracketLabel,
   bracketLetter,
   type GroupStanding,
+  type QualifiedTeam,
 } from "@/lib/algorithms/knockout";
 import type { RoundRest } from "@/lib/supabase/types";
 
@@ -44,6 +48,31 @@ const KO_STAGE_LABEL: Record<string, string> = {
   final: "Final",
   bronze: "Bronsmatch",
 };
+
+// Flattens per-group standings + team metadata into the seeded-bracket input
+// shape. Each team carries its 0-based group rank, manual seed (if set), and
+// standings tiebreakers so `computeSeedOrder` can pick a consistent overall seed.
+function buildQualifiedTeams(
+  groupStandings: GroupStanding[],
+  teamMap: Map<string, TournamentTeam>
+): QualifiedTeam[] {
+  const out: QualifiedTeam[] = [];
+  for (const g of groupStandings) {
+    g.standings.forEach((s, rank) => {
+      const team = teamMap.get(s.team_id);
+      out.push({
+        team_id: s.team_id,
+        groupId: g.groupId,
+        rank,
+        manualSeed: team?.seed ?? null,
+        gf: s.gf,
+        gd: s.gd,
+        ga: s.ga,
+      });
+    });
+  }
+  return out;
+}
 
 function koStageBadgeColor(stage: string): string {
   switch (stage) {
@@ -494,6 +523,151 @@ function HostInner({
     return stageLabel(m, groupMap);
   }
 
+  // Seeded-mode advance: all KO matches sit in a single bracket. Round 1
+  // emission order encodes pair-index — sorting completed matches by
+  // created_at recovers it. Byes (top seeds whose slot pair contained a BYE)
+  // are interleaved into the round-2 entrants list at their known pair index.
+  // Subsequent rounds pair adjacent winners (matches[0]+matches[1], etc).
+  async function autoAdvanceSeededKO(loaded: Loaded): Promise<boolean> {
+    const { tournament: t, courts: c, matches: allMatches, groups: gs, teams: tm } = loaded;
+    const apg = t.advances_per_group ?? 0;
+    if (apg <= 0) return false;
+
+    const koAll = allMatches.filter((m) => m.stage !== "group" && m.stage !== "bronze");
+    if (koAll.length === 0) return false;
+
+    const gMatches = allMatches.filter((m) => m.stage === "group");
+    const pm = new Map<string, Player>();
+    for (const p of loaded.players) pm.set(p.id, p);
+    const teamById = new Map(tm.map((tt) => [tt.id, tt]));
+
+    const groupStandings: GroupStanding[] = gs.map((grp) => {
+      const gTeams = tm.filter((tt) => tt.group_id === grp.id);
+      const gM = gMatches.filter((m) => m.group_id === grp.id);
+      const standings = computeStandings(gTeams, gM, pm).slice(0, apg);
+      return { groupId: grp.id, groupName: grp.name, standings };
+    });
+    const qualified = buildQualifiedTeams(groupStandings, teamById);
+    if (qualified.length < 2) return false;
+
+    const seedOrdered = computeSeedOrder(qualified);
+    const seedOrderedIds = seedOrdered.map((q) => q.team_id);
+    const byes = computeSeededByePairIndices(seedOrderedIds);
+    const byeByPair = new Map(byes.map((b) => [b.pairIndex, b.teamId]));
+
+    // Round-1 emission order = pair-index order over non-bye pairs.
+    const koByRound = new Map<number, TournamentMatch[]>();
+    for (const m of koAll) {
+      const arr = koByRound.get(m.round_number) ?? [];
+      arr.push(m);
+      koByRound.set(m.round_number, arr);
+    }
+    const sortedRounds = [...koByRound.keys()].sort((a, b) => a - b);
+    if (sortedRounds.length === 0) return false;
+    const firstRound = sortedRounds[0];
+
+    function winnerOf(m: TournamentMatch): string {
+      return (m.score_team1 ?? 0) > (m.score_team2 ?? 0) ? m.team1_id : m.team2_id;
+    }
+    function loserOf(m: TournamentMatch): string {
+      return (m.score_team1 ?? 0) > (m.score_team2 ?? 0) ? m.team2_id : m.team1_id;
+    }
+
+    let generated = false;
+    for (const roundNum of sortedRounds) {
+      const matchesThisRound = (koByRound.get(roundNum) ?? [])
+        .slice()
+        .sort((a, b) => {
+          const dt = a.created_at.localeCompare(b.created_at);
+          return dt !== 0 ? dt : a.id.localeCompare(b.id);
+        });
+      const nextRoundNum = roundNum + 1;
+      const nextRoundMatches = (allMatches.filter(
+        (m) => m.round_number === nextRoundNum && m.stage !== "group" && m.stage !== "bronze"
+      ));
+      if (nextRoundMatches.length > 0) continue;
+      if (!matchesThisRound.every((m) => m.status === "completed")) continue;
+
+      let entrants: string[];
+      if (roundNum === firstRound && byes.length > 0) {
+        // Interleave byes by pair index with match winners in emission order.
+        const pairCount = matchesThisRound.length + byes.length;
+        entrants = new Array(pairCount);
+        let mi = 0;
+        for (let p = 0; p < pairCount; p++) {
+          if (byeByPair.has(p)) {
+            entrants[p] = byeByPair.get(p)!;
+          } else {
+            entrants[p] = winnerOf(matchesThisRound[mi++]);
+          }
+        }
+      } else {
+        entrants = matchesThisRound.map(winnerOf);
+      }
+
+      if (entrants.length < 2) continue;
+      const M = entrants.length;
+      const stage: MatchStage = M <= 2 ? "final" : M <= 4 ? "semi_final" : "quarter_final";
+
+      const newMatches: Omit<TournamentMatch, "id" | "created_at">[] = [];
+      for (let i = 0; i < M; i += 2) {
+        const a = entrants[i];
+        const b = entrants[i + 1];
+        if (!a || !b) continue;
+        // Inherit a feeder court when possible, else round-robin across all courts.
+        const feederMatch = matchesThisRound.find(
+          (mm) => winnerOf(mm) === a || winnerOf(mm) === b
+        );
+        const inherited =
+          feederMatch?.court_id != null
+            ? c.find((cc) => cc.id === feederMatch.court_id) ?? null
+            : null;
+        const court = inherited ?? c[(i / 2) % Math.max(1, c.length)] ?? null;
+        newMatches.push({
+          tournament_id: t.id,
+          group_id: null,
+          round_number: nextRoundNum,
+          court_id: court?.id ?? null,
+          team1_id: a,
+          team2_id: b,
+          score_team1: null,
+          score_team2: null,
+          status: "scheduled",
+          stage,
+          bracket: "A",
+        });
+      }
+
+      // Bronze: emitted when we just produced the final and there are exactly
+      // two prior-round (SF) matches whose losers can play for 3rd place.
+      if (t.has_bronze && stage === "final" && matchesThisRound.length === 2) {
+        const l1 = loserOf(matchesThisRound[0]);
+        const l2 = loserOf(matchesThisRound[1]);
+        const bronzeCourt = c[Math.floor(c.length / 2)] ?? c[0] ?? null;
+        newMatches.push({
+          tournament_id: t.id,
+          group_id: null,
+          round_number: nextRoundNum,
+          court_id: bronzeCourt?.id ?? null,
+          team1_id: l1,
+          team2_id: l2,
+          score_team1: null,
+          score_team2: null,
+          status: "scheduled",
+          stage: "bronze",
+          bracket: "A",
+        });
+      }
+
+      if (newMatches.length > 0) {
+        await insertMatches(newMatches);
+        generated = true;
+      }
+    }
+
+    return generated;
+  }
+
   // Automatically generates the next KO round's match for each completed pair
   // of feeder matches, enabling QF and SF to run simultaneously. Multi-bracket:
   // KO matches are partitioned by `bracket` (A/B/C…) and each bracket advances
@@ -502,6 +676,9 @@ function HostInner({
     const { tournament: t, courts: c, matches: allMatches, groups: g, teams: tm } = loaded;
     const koAll = allMatches.filter((m) => m.stage !== "group");
     if (koAll.length === 0) return false;
+    if (t.formation === "seeded") {
+      return autoAdvanceSeededKO(loaded);
+    }
 
     const completedNonBronze = koAll.filter(
       (m) => m.status === "completed" && m.stage !== "bronze"
@@ -1123,10 +1300,13 @@ function PlayoffPanel({
   const [err, setErr] = useState<string | null>(null);
 
   // Preview every bracket's first-round matchups, regardless of court selection.
-  const previewMatchups = useMemo(
-    () => generateFirstKORound(groupStandings, [], [], tournament.id, hasBronze),
-    [groupStandings, tournament.id, hasBronze]
-  );
+  const previewMatchups = useMemo(() => {
+    if (tournament.formation === "seeded") {
+      const qualified = buildQualifiedTeams(groupStandings, teamMap);
+      return generateSeededFirstRound(qualified, [], tournament.id, "A");
+    }
+    return generateFirstKORound(groupStandings, [], [], tournament.id, hasBronze);
+  }, [groupStandings, tournament.id, tournament.formation, hasBronze, teamMap]);
 
   // One bracket entry per advancing rank (or 1 entry for single-group fallback).
   type BracketPreview = {
@@ -1175,13 +1355,21 @@ function PlayoffPanel({
     setErr(null);
     setGenerating(true);
     try {
-      const newMatches = generateFirstKORound(
-        groupStandings,
-        [],
-        chosenCourts,
-        tournament.id,
-        hasBronze
-      );
+      const newMatches =
+        tournament.formation === "seeded"
+          ? generateSeededFirstRound(
+              buildQualifiedTeams(groupStandings, teamMap),
+              chosenCourts,
+              tournament.id,
+              "A"
+            )
+          : generateFirstKORound(
+              groupStandings,
+              [],
+              chosenCourts,
+              tournament.id,
+              hasBronze
+            );
       if (newMatches.length === 0) {
         setErr("Inga matcher kunde genereras. Kontrollera inställningarna.");
         return;
