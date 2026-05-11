@@ -343,19 +343,6 @@ function HostInner({
   );
   const totalMatches = matches.length;
 
-  // The active "round" is the lowest round number that still has unfinished matches.
-  // All courts wait on this round until every match in it is completed before
-  // advancing — once they all complete, this naturally becomes the next round.
-  const currentRound = useMemo(() => {
-    let r: number | null = null;
-    for (const m of matches) {
-      if (m.status !== "completed") {
-        if (r === null || m.round_number < r) r = m.round_number;
-      }
-    }
-    return r;
-  }, [matches]);
-
   const matchByCourt = useMemo(() => {
     const map = new Map<string, TournamentMatch>();
 
@@ -389,20 +376,6 @@ function HostInner({
     }
     return map;
   }, [courts, matches]);
-
-  // Round progress counter: how many group matches in the current round are done.
-  const roundCompleted = useMemo(() => {
-    if (currentRound === null) return 0;
-    return matches.filter(
-      (m) => m.stage === "group" && m.round_number === currentRound && m.status === "completed"
-    ).length;
-  }, [matches, currentRound]);
-  const roundTotal = useMemo(() => {
-    if (currentRound === null) return 0;
-    return matches.filter(
-      (m) => m.stage === "group" && m.round_number === currentRound
-    ).length;
-  }, [matches, currentRound]);
 
   // --- Playoff derived state ---
   const groupMatches = useMemo(() => matches.filter((m) => m.stage === "group"), [matches]);
@@ -834,23 +807,7 @@ function HostInner({
                 </div>
               </div>
             ))
-          ) : (
-            currentRound !== null && (
-              <div className="px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-                <div className="text-[10px] uppercase tracking-wide text-zinc-500 leading-none mb-0.5">
-                  Runda{" "}
-                  {tournament.total_rounds > 0
-                    ? `${currentRound}/${tournament.total_rounds}`
-                    : currentRound}
-                </div>
-                <div className="text-sm font-semibold tabular-nums leading-tight">
-                  {roundCompleted}
-                  <span className="text-zinc-400 font-normal">/{roundTotal}</span>
-                  <span className="text-zinc-500 font-normal text-[11px] ml-1">banor</span>
-                </div>
-              </div>
-            )
-          )}
+          ) : null}
           <div className="px-3 py-1 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
             <div className="text-[10px] uppercase tracking-wide text-zinc-500 leading-none mb-0.5">
               Totalt

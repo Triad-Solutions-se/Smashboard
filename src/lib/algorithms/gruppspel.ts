@@ -38,7 +38,7 @@ export function distributeTeamsToGroups(
   });
   return buckets.map((teamsInGroup, idx) => ({
     group: {
-      name: `Grupp ${String.fromCharCode(65 + idx)}`,
+      name: `Grupp ${idx + 1}`,
       sort_order: idx,
     },
     teams: teamsInGroup,

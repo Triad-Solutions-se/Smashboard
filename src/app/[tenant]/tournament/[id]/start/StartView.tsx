@@ -377,7 +377,7 @@ export function StartView({
       const insertedGroups = await insertGroups(
         nonEmpty.map((_, idx) => ({
           tournament_id: tournament.id,
-          name: `Grupp ${String.fromCharCode(65 + idx)}`,
+          name: `Grupp ${idx + 1}`,
           sort_order: idx,
         }))
       );
@@ -779,9 +779,7 @@ export function StartView({
                   const banorWord = rec === 1 ? "bana" : "banor";
                   return (
                     <div key={i} style={{ color }}>
-                      {numGroups > 1
-                        ? `Grupp ${String.fromCharCode(65 + i)}: `
-                        : ""}
+                      {numGroups > 1 ? `Grupp ${i + 1}: ` : ""}
                       {teams} lag → {rec} {banorWord} rekommenderas
                       {assigned !== rec && (
                         <span className="text-zinc-500 dark:text-zinc-400">
@@ -830,7 +828,7 @@ export function StartView({
                       >
                         {Array.from({ length: numGroups }, (_, i) => (
                           <option key={i} value={i}>
-                            Grupp {String.fromCharCode(65 + i)}
+                            Grupp {i + 1}
                           </option>
                         ))}
                       </select>
