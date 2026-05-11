@@ -1867,23 +1867,126 @@ type WinnerPodiumRow = {
   thirdAlt: string | null;
 };
 
-function MedalBadge({ position }: { position: 1 | 2 | 3 }) {
-  const styles = {
-    1: { bg: "#fbbf24", ring: "#f59e0b", text: "#78350f" },
-    2: { bg: "#d4d4d8", ring: "#a1a1aa", text: "#27272a" },
-    3: { bg: "#d97706", ring: "#b45309", text: "#fff7ed" },
-  } as const;
-  const s = styles[position];
+const PODIUM_STYLES = {
+  1: {
+    barHeight: "h-28 sm:h-32",
+    barGradient:
+      "from-amber-200 via-amber-400 to-amber-600 dark:from-amber-300 dark:via-amber-500 dark:to-amber-700",
+    barShadow:
+      "shadow-[0_10px_30px_-12px_rgba(245,158,11,0.55)] dark:shadow-[0_10px_30px_-10px_rgba(245,158,11,0.55)]",
+    avatarRing: "ring-amber-400/70 dark:ring-amber-300/70",
+    avatarGlow:
+      "shadow-[0_0_0_6px_rgba(251,191,36,0.18)] dark:shadow-[0_0_0_6px_rgba(251,191,36,0.16)]",
+    avatarGradient:
+      "bg-gradient-to-br from-amber-200 to-amber-500 dark:from-amber-300 dark:to-amber-600",
+    badgeBg: "bg-amber-500 dark:bg-amber-400",
+    badgeText: "text-amber-950",
+    numberText: "text-amber-950",
+    label: "Guld",
+    labelColor: "text-amber-700 dark:text-amber-300",
+  },
+  2: {
+    barHeight: "h-20 sm:h-24",
+    barGradient:
+      "from-emerald-300 via-emerald-500 to-emerald-700 dark:from-emerald-400 dark:via-emerald-600 dark:to-emerald-800",
+    barShadow:
+      "shadow-[0_10px_24px_-12px_rgba(16,185,129,0.5)] dark:shadow-[0_10px_24px_-10px_rgba(16,185,129,0.5)]",
+    avatarRing: "ring-emerald-400/70 dark:ring-emerald-400/70",
+    avatarGlow:
+      "shadow-[0_0_0_6px_rgba(16,185,129,0.16)] dark:shadow-[0_0_0_6px_rgba(16,185,129,0.16)]",
+    avatarGradient:
+      "bg-gradient-to-br from-emerald-200 to-emerald-500 dark:from-emerald-300 dark:to-emerald-600",
+    badgeBg: "bg-emerald-500 dark:bg-emerald-400",
+    badgeText: "text-emerald-950",
+    numberText: "text-emerald-50",
+    label: "Silver",
+    labelColor: "text-emerald-700 dark:text-emerald-300",
+  },
+  3: {
+    barHeight: "h-16 sm:h-20",
+    barGradient:
+      "from-orange-300 via-orange-500 to-orange-700 dark:from-orange-400 dark:via-orange-600 dark:to-orange-800",
+    barShadow:
+      "shadow-[0_10px_24px_-12px_rgba(234,88,12,0.5)] dark:shadow-[0_10px_24px_-10px_rgba(234,88,12,0.5)]",
+    avatarRing: "ring-orange-400/70 dark:ring-orange-400/70",
+    avatarGlow:
+      "shadow-[0_0_0_6px_rgba(234,88,12,0.16)] dark:shadow-[0_0_0_6px_rgba(234,88,12,0.16)]",
+    avatarGradient:
+      "bg-gradient-to-br from-orange-200 to-orange-500 dark:from-orange-300 dark:to-orange-600",
+    badgeBg: "bg-orange-500 dark:bg-orange-400",
+    badgeText: "text-orange-950",
+    numberText: "text-orange-50",
+    label: "Brons",
+    labelColor: "text-orange-700 dark:text-orange-400",
+  },
+} as const;
+
+function PodiumColumn({
+  position,
+  name,
+  subname,
+}: {
+  position: 1 | 2 | 3;
+  name: string | null;
+  subname?: string | null;
+}) {
+  const s = PODIUM_STYLES[position];
+  const initials = (text: string | null): string => {
+    if (!text) return "–";
+    const parts = text.split("&").map((p) => p.trim()).filter(Boolean);
+    const letters = parts
+      .slice(0, 2)
+      .map((p) => p.charAt(0).toUpperCase())
+      .join("");
+    return letters || "–";
+  };
   return (
-    <div
-      className="w-9 h-9 rounded-full flex items-center justify-center text-base font-black shrink-0 shadow-sm"
-      style={{
-        background: `radial-gradient(circle at 30% 30%, ${s.bg}, ${s.ring})`,
-        color: s.text,
-      }}
-      aria-hidden
-    >
-      {position}
+    <div className="flex-1 flex flex-col items-center min-w-0 max-w-[140px] sm:max-w-[160px]">
+      {position === 1 && (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 18"
+          fill="currentColor"
+          className="w-7 h-5 text-amber-500 dark:text-amber-400 mb-1 drop-shadow"
+          aria-hidden="true"
+        >
+          <path d="M2 4l4 6 6-9 6 9 4-6-2 12H4z" />
+          <rect x="3" y="15" width="18" height="2" rx="0.5" />
+        </svg>
+      )}
+      <div
+        className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-full ${s.avatarGradient} ${s.avatarGlow} ring-2 ${s.avatarRing} flex items-center justify-center mb-2`}
+      >
+        <span
+          className={`text-sm sm:text-base font-black tracking-wide ${
+            position === 1 ? "text-amber-950" : "text-white drop-shadow"
+          }`}
+        >
+          {initials(name)}
+        </span>
+      </div>
+      <div className="mb-2 flex flex-col items-center text-center w-full px-1">
+        <div
+          className={`text-[10px] uppercase tracking-widest font-bold ${s.labelColor}`}
+        >
+          {s.label}
+        </div>
+        <div className="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-tight break-words max-w-full">
+          {name ?? "–"}
+        </div>
+        {subname && (
+          <div className="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 leading-tight break-words max-w-full">
+            {subname}
+          </div>
+        )}
+      </div>
+      <div
+        className={`relative w-full ${s.barHeight} rounded-t-lg bg-gradient-to-b ${s.barGradient} ${s.barShadow} flex items-start justify-center pt-2`}
+      >
+        <span className={`text-3xl sm:text-4xl font-black ${s.numberText}`}>
+          {position}
+        </span>
+      </div>
     </div>
   );
 }
@@ -1902,14 +2005,18 @@ function WinnerTable({
   const nameOf = (id: string | null): string | null => {
     if (!id) return null;
     const t = teamMap.get(id);
-    return t ? teamName(t, playerMap) : null;
+    return t ? shortTeamName(t, playerMap) : null;
   };
 
   const showBracketLabel = winners.length > 1 || winners[0]?.bracket != null;
 
   return (
-    <div className="border-b border-amber-200 dark:border-amber-900/40 bg-gradient-to-br from-amber-50 via-white to-white dark:from-amber-950/30 dark:via-zinc-900 dark:to-zinc-900 px-5 py-5">
-      <div className="flex items-center gap-2 mb-3">
+    <div className="relative overflow-hidden border-b border-amber-200/60 dark:border-zinc-800 bg-gradient-to-b from-amber-50 via-white to-white dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-900 px-5 pt-5 pb-2">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.22),transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.14),transparent_60%)]"
+        aria-hidden
+      />
+      <div className="relative flex items-center justify-center gap-2 mb-5">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
@@ -1918,7 +2025,7 @@ function WinnerTable({
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="w-5 h-5 text-amber-600 dark:text-amber-400"
+          className="w-5 h-5 text-amber-500 dark:text-amber-400"
           aria-hidden="true"
         >
           <path d="M6 9H4a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1h3" />
@@ -1927,71 +2034,39 @@ function WinnerTable({
           <path d="M12 17v4" />
           <path d="M8 21h8" />
         </svg>
-        <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+        <h2 className="text-base font-bold tracking-wide text-zinc-900 dark:text-zinc-100">
           Vinnare
         </h2>
       </div>
+
       <div
-        className="grid gap-3"
+        className="relative grid gap-8"
         style={{
           gridTemplateColumns: `repeat(${winners.length}, minmax(0, 1fr))`,
         }}
       >
         {winners.map((w) => {
-          const thirdName = nameOf(w.third);
-          const thirdAltName = nameOf(w.thirdAlt);
-          const thirdDisplay = thirdAltName
-            ? thirdName && thirdAltName
-              ? `${thirdName}  ·  ${thirdAltName}`
-              : thirdName ?? thirdAltName
-            : thirdName;
+          const first = nameOf(w.first);
+          const second = nameOf(w.second);
+          const third = nameOf(w.third);
+          const thirdAlt = nameOf(w.thirdAlt);
           return (
             <div
               key={w.bracket ?? "main"}
-              className="rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-zinc-900 overflow-hidden"
+              className="flex flex-col items-center"
             >
               {showBracketLabel && (
-                <div className="px-3 py-1.5 text-xs font-semibold bg-amber-50 dark:bg-amber-950/30 border-b border-amber-100 dark:border-amber-900/40 text-amber-900 dark:text-amber-200">
+                <div className="text-[10px] uppercase tracking-widest font-bold text-zinc-500 dark:text-zinc-400 mb-3">
                   {w.bracket
                     ? bracketLabelForMode(w.bracket, bracketMode)
                     : "Slutställning"}
                 </div>
               )}
-              <ol className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                <li className="px-3 py-2.5 flex items-center gap-3">
-                  <MedalBadge position={1} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] uppercase tracking-wider font-bold text-amber-700 dark:text-amber-400">
-                      Guld
-                    </div>
-                    <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                      {nameOf(w.first) ?? "–"}
-                    </div>
-                  </div>
-                </li>
-                <li className="px-3 py-2.5 flex items-center gap-3">
-                  <MedalBadge position={2} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] uppercase tracking-wider font-bold text-zinc-500 dark:text-zinc-400">
-                      Silver
-                    </div>
-                    <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                      {nameOf(w.second) ?? "–"}
-                    </div>
-                  </div>
-                </li>
-                <li className="px-3 py-2.5 flex items-center gap-3">
-                  <MedalBadge position={3} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] uppercase tracking-wider font-bold text-orange-700 dark:text-orange-400">
-                      Brons
-                    </div>
-                    <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                      {thirdDisplay ?? "–"}
-                    </div>
-                  </div>
-                </li>
-              </ol>
+              <div className="w-full max-w-md flex items-end justify-center gap-2 sm:gap-3">
+                <PodiumColumn position={2} name={second} />
+                <PodiumColumn position={1} name={first} />
+                <PodiumColumn position={3} name={third} subname={thirdAlt} />
+              </div>
             </div>
           );
         })}
