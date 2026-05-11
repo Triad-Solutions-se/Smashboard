@@ -1379,24 +1379,41 @@ function StandingsColumn({
           const standings = computeStandings(groupTeams, groupMatches, playerMap);
           const teamById = new Map(groupTeams.map((t) => [t.id, t]));
           const palette = groupPaletteFor(gi);
+          const groupComplete =
+            groupMatches.length > 0 && groupMatches.every((m) => m.status === "completed");
           return (
             <div key={g.id} className="flex-1 min-h-fit flex flex-col">
               <div
-                className={`px-[0.8vw] font-bold tracking-tight flex items-center justify-between ${palette.bar}`}
+                className={`px-[0.8vw] font-bold tracking-tight flex items-center justify-between gap-[0.4vw] ${palette.bar}`}
                 style={{
                   fontSize: `clamp(0.5rem, ${0.72 * scale}vw, ${0.88 * scale}rem)`,
                   padding: `${0.22 * scale}vh 0.8vw`,
                 }}
               >
                 <span>{g.name}</span>
-                <span className="opacity-60 tabular-nums font-semibold" style={{ fontSize: `clamp(0.45rem, ${0.58 * scale}vw, ${0.72 * scale}rem)` }}>
-                  {standings.length}
-                </span>
+                {groupComplete ? (
+                  <span
+                    className="shrink-0 inline-flex items-center rounded-md font-bold uppercase tracking-wider"
+                    style={{
+                      fontSize: `clamp(0.4rem, ${0.5 * scale}vw, ${0.62 * scale}rem)`,
+                      padding: `${0.1 * scale}vh ${0.4 * scale}vw`,
+                      backgroundColor: `${accent}25`,
+                      color: accent,
+                      letterSpacing: "0.08em",
+                    }}
+                  >
+                    Gruppspel klart
+                  </span>
+                ) : (
+                  <span className="opacity-60 tabular-nums font-semibold" style={{ fontSize: `clamp(0.45rem, ${0.58 * scale}vw, ${0.72 * scale}rem)` }}>
+                    {standings.length}
+                  </span>
+                )}
               </div>
               <ul className="flex flex-col">
                 {standings.map((s, i) => {
                   const top = i === 0;
-                  const isResting = restingSet.has(s.team_id);
+                  const isResting = !groupComplete && restingSet.has(s.team_id);
                   return (
                     <li
                       key={s.team_id}

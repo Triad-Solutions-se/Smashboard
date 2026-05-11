@@ -2276,10 +2276,23 @@ function GroupColumn({
     [groupTeams, groupMatches, playerMap]
   );
 
+  const groupComplete = useMemo(
+    () => groupMatches.length > 0 && groupMatches.every((m) => m.status === "completed"),
+    [groupMatches]
+  );
+
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col min-w-0">
-      <div className={`px-4 py-2 border-b font-semibold text-sm ${palette.bar}`}>
-        {group.name}
+      <div className={`px-4 py-2 border-b font-semibold text-sm ${palette.bar} flex items-center justify-between gap-2`}>
+        <span>{group.name}</span>
+        {groupComplete && (
+          <span
+            className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60"
+            title="Alla matcher i gruppen är spelade"
+          >
+            Gruppspel klart
+          </span>
+        )}
       </div>
 
       {/* Standings (scoreboard) at the top of the column */}
@@ -2327,7 +2340,7 @@ function GroupColumn({
             {standings.map((s, i) => {
               const t = teamMap.get(s.team_id);
               const slutspel = slutspelLabel(i + 1, advancesPerGroup);
-              const isResting = restingSet.has(s.team_id);
+              const isResting = !groupComplete && restingSet.has(s.team_id);
               return (
                 <tr
                   key={s.team_id}
