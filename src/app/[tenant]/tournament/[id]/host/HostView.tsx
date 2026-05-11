@@ -2049,26 +2049,36 @@ function WinnerTable({
       />
 
       <div className="relative px-6 pt-10 pb-10 max-w-4xl mx-auto">
-        {(tenant.logo_url || tenant.logo_url_dark) && (
-          <div className="flex justify-center mb-6">
-            {tenant.logo_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={tenant.logo_url}
-                alt={tenant.name}
-                className={`h-16 sm:h-24 w-auto object-contain ${tenant.logo_url_dark ? "dark:hidden" : ""}`}
-              />
-            )}
-            {tenant.logo_url_dark && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={tenant.logo_url_dark}
-                alt={tenant.name}
-                className={`h-16 sm:h-24 w-auto object-contain ${tenant.logo_url ? "hidden dark:block" : ""}`}
-              />
-            )}
-          </div>
-        )}
+        <div className="flex items-center justify-center gap-6 sm:gap-10 mb-6">
+          {tenant.logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={tenant.logo_url}
+              alt={tenant.name}
+              className={`h-16 sm:h-24 w-auto object-contain ${tenant.logo_url_dark ? "dark:hidden" : ""}`}
+            />
+          )}
+          {tenant.logo_url_dark && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={tenant.logo_url_dark}
+              alt={tenant.name}
+              className={`h-16 sm:h-24 w-auto object-contain ${tenant.logo_url ? "hidden dark:block" : ""}`}
+            />
+          )}
+          {(tenant.logo_url || tenant.logo_url_dark) && (
+            <span
+              className="h-12 sm:h-16 w-px bg-zinc-300 dark:bg-zinc-700"
+              aria-hidden
+            />
+          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icons/triad-logo.png"
+            alt="Triad Solutions"
+            className="h-16 sm:h-24 w-auto object-contain"
+          />
+        </div>
 
         <div className="flex items-center justify-center gap-3 mb-3">
           <span
@@ -2179,16 +2189,6 @@ function WinnerTable({
           })}
         </div>
 
-        <div className="mt-8 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[0.25em] font-semibold text-zinc-400 dark:text-zinc-500">
-          <span>Drivs av</span>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/icons/triad-logo.png"
-            alt="Triad Solutions"
-            className="h-4 w-auto opacity-70"
-          />
-          <span>Triad Solutions</span>
-        </div>
       </div>
     </div>
   );
