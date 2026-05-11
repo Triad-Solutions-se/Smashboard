@@ -1194,7 +1194,7 @@ function HostInner({
         </div>
       )}
 
-      {tournamentPhase === "done" && tournament.status !== "completed" && (
+      {tournamentPhase === "done" && tournament.status !== "completed" && !isFullscreen && (
         <div className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-4 flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
