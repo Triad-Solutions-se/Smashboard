@@ -4,6 +4,7 @@ import type {
   Tournament,
   TournamentFormat,
   GroupFormation,
+  BracketMode,
   TournamentGroup,
   TournamentTeam,
   TournamentMatch,
@@ -262,6 +263,7 @@ export type ActivateTournamentInput = {
   total_rounds: number;
   formation: GroupFormation;
   advances_per_group?: number | null;
+  bracket_mode?: BracketMode;
   has_bronze?: boolean;
   qf_court_ids?: string[];
   sf_court_ids?: string[];

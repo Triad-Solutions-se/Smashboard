@@ -63,6 +63,14 @@ export function bracketLabel(letter: string): string {
   return `${letter}-slutspel`;
 }
 
+// In single-bracket mode there's just one slutspel — drop the letter prefix.
+export function bracketLabelForMode(
+  letter: string,
+  bracketMode: "single" | "split"
+): string {
+  return bracketMode === "single" ? "Slutspel" : bracketLabel(letter);
+}
+
 // Number of brackets a tournament should produce: one per advancing rank.
 // With ≥2 groups: equals the largest standings.length (i.e. advances_per_group).
 // With 1 group: a single combined bracket of all advancing teams.
@@ -355,9 +363,13 @@ export function byeCount(_groupStandings: GroupStanding[]): number {
   return 0;
 }
 
-type SeedEntry = { team_id: string; groupId: string; rank: number };
+export type SeedEntry = { team_id: string; groupId: string; rank: number };
 
-function collectSeeds(groupStandings: GroupStanding[], advancesPerGroup: number): SeedEntry[] {
+// Collects qualifying teams in (rank-major, group-order) order so the resulting
+// seed list maps directly into a tennis bracket: seed N = the N-th entry. This
+// is what places G1R1 vs G_lastR2, G2R1 vs G_(last-1)R2, etc. when fed through
+// standardSeedSlots.
+export function collectSeeds(groupStandings: GroupStanding[], advancesPerGroup: number): SeedEntry[] {
   const result: SeedEntry[] = [];
   for (let rank = 0; rank < advancesPerGroup; rank++) {
     for (const g of groupStandings) {
@@ -543,6 +555,44 @@ export function generateSeededFirstRound(
     const court = courts.length > 0 ? courts[courtIdx % courts.length] : null;
     courtIdx++;
     matches.push(makeMatch(tournamentId, a, b, stage, court, 1, bracket));
+  }
+  return matches;
+}
+
+// Generates round 1 of a SINGLE unified bracket where seed N = the N-th team
+// in (rank-major, group-order). With 4 groups × 2 advancing this produces
+// standard tennis pairings: G1R1 vs G4R2, G4R1 vs G1R2, G2R1 vs G3R2, G3R1 vs
+// G2R2. The bracket label is "A" for storage compatibility — UI hides the
+// letter when bracket_mode === "single".
+export function generateSingleBracketFirstRound(
+  groupStandings: GroupStanding[],
+  courts: Court[],
+  tournamentId: string
+): GeneratedKOMatch[] {
+  const advancesPerGroup = Math.max(
+    0,
+    ...groupStandings.map((g) => g.standings.length)
+  );
+  if (advancesPerGroup === 0) return [];
+  const seeds = collectSeeds(groupStandings, advancesPerGroup);
+  if (seeds.length < 2) return [];
+  const seedOrderedIds = seeds.map((s) => s.team_id);
+  const slots = buildBracketSlots(seedOrderedIds);
+  const groupIdByTeam = new Map<string, string>();
+  for (const s of seeds) groupIdByTeam.set(s.team_id, s.groupId);
+  applyAntiRematchSwap(slots, groupIdByTeam);
+
+  const B = slots.length;
+  const stage = seededStageForRound(B);
+  const matches: GeneratedKOMatch[] = [];
+  let courtIdx = 0;
+  for (let p = 0; p < B / 2; p++) {
+    const a = slots[2 * p];
+    const b = slots[2 * p + 1];
+    if (!a || !b) continue; // BYE pair — the non-null team auto-advances
+    const court = courts.length > 0 ? courts[courtIdx % courts.length] : null;
+    courtIdx++;
+    matches.push(makeMatch(tournamentId, a, b, stage, court, 1, "A"));
   }
   return matches;
 }

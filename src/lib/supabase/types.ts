@@ -28,6 +28,7 @@ export type Player = {
 export type TournamentFormat = "gruppspel" | "mexicano" | "americano" | "team_mexicano";
 export type TournamentStatus = "draft" | "active" | "completed";
 export type GroupFormation = "random" | "seeded" | "manual";
+export type BracketMode = "single" | "split";
 
 export type Tournament = {
   id: string;
@@ -45,6 +46,7 @@ export type Tournament = {
   open_registration: boolean;
   max_teams: number | null;
   advances_per_group: number | null;
+  bracket_mode: BracketMode;
   has_bronze: boolean;
   qf_court_ids: string[];
   sf_court_ids: string[];

@@ -9,6 +9,7 @@ import type {
   TournamentTeam,
   Court,
   Player,
+  BracketMode,
 } from "@/lib/supabase/types";
 import {
   updateDraftTeam,
@@ -165,6 +166,7 @@ export function StartView({
   const [numGroups, setNumGroups] = useState(2);
   const [gamesPerMatch, setGamesPerMatch] = useState(5);
   const [advancesPerGroup, setAdvancesPerGroup] = useState(0);
+  const [bracketMode, setBracketMode] = useState<BracketMode>("single");
   const [hasBronze, setHasBronze] = useState(false);
   const [lottning, setLottning] = useState<"automatic" | "manual">("automatic");
   const [selectedCourts, setSelectedCourts] = useState<Set<string>>(
@@ -354,6 +356,7 @@ export function StartView({
             numGroups,
             gamesPerMatch,
             advancesPerGroup,
+            bracketMode,
             hasBronze,
             selectedCourts: [...selectedCourts],
             courtGroupIdx,
@@ -453,6 +456,7 @@ export function StartView({
         total_rounds: totalRounds,
         formation: "random",
         advances_per_group: advancesPerGroup > 0 ? advancesPerGroup : null,
+        bracket_mode: bracketMode,
         has_bronze: hasBronze,
         qf_court_ids: [...qfCourtIds],
         sf_court_ids: [...sfCourtIds],
@@ -691,6 +695,52 @@ export function StartView({
               <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Inget slutspel</p>
             )}
           </div>
+          {advancesPerGroup > 1 && (
+            <div>
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">
+                Slutspelsformat
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  {
+                    value: "single" as BracketMode,
+                    label: "1 slutspel",
+                    desc: `Alla ${advancesPerGroup * numGroups} lag i ett slutspel`,
+                  },
+                  {
+                    value: "split" as BracketMode,
+                    label: "A & B slutspel",
+                    desc: `Per placering — ${numGroups} lag per slutspel`,
+                  },
+                ]).map((opt) => {
+                  const active = bracketMode === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setBracketMode(opt.value)}
+                      aria-pressed={active}
+                      className="text-left rounded-lg border px-3 py-2 transition"
+                      style={active
+                        ? { borderColor: accent, backgroundColor: `${accent}10` }
+                        : { borderColor: "#e4e4e7" }
+                      }
+                    >
+                      <div
+                        className="text-sm font-medium"
+                        style={active ? { color: accent } : undefined}
+                      >
+                        {opt.label}
+                      </div>
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        {opt.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {advancesPerGroup > 0 && (
             <div className="flex items-center justify-between">
               <div>
