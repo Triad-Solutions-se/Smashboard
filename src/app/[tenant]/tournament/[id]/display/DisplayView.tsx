@@ -1100,135 +1100,44 @@ function PodiumView({
   playerMap: Map<string, Player>;
   accent: string;
 }) {
-  const top3 = [1, 2, 3].map((p) => ranking.find((r) => r.place === p) ?? null);
-  const rest = ranking.filter((r) => r.place > 3);
+  const winner = ranking.find((r) => r.place === 1) ?? null;
+  const team = winner ? teamMap.get(winner.teamId) : null;
+  const p1 = team ? playerMap.get(team.player1_id) : null;
+  const p2 = team && team.player2_id ? playerMap.get(team.player2_id) : null;
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col gap-[2vh]">
-      <div className="flex items-end justify-center gap-[1.5vw] px-[4vw]" style={{ height: "55%" }}>
-        <PodiumPillar
-          place={2}
-          entry={top3[1]}
-          teamMap={teamMap}
-          playerMap={playerMap}
-          color="#94a3b8"
-          heightPct={70}
-        />
-        <PodiumPillar
-          place={1}
-          entry={top3[0]}
-          teamMap={teamMap}
-          playerMap={playerMap}
-          color={accent}
-          heightPct={100}
-          gold
-        />
-        <PodiumPillar
-          place={3}
-          entry={top3[2]}
-          teamMap={teamMap}
-          playerMap={playerMap}
-          color="#b45309"
-          heightPct={50}
-        />
-      </div>
-      {rest.length > 0 && (
-        <div className="flex-1 min-h-0 overflow-hidden px-[2vw]">
-          <div
-            className="grid gap-x-[3vw] gap-y-[0.6vh] content-start"
-            style={{
-              gridTemplateColumns: `repeat(${rest.length > 8 ? 3 : 2}, minmax(0, 1fr))`,
-            }}
-          >
-            {rest.map((r) => {
-              const t = teamMap.get(r.teamId);
-              const p1 = t ? playerMap.get(t.player1_id) : null;
-              const p2 = t && t.player2_id ? playerMap.get(t.player2_id) : null;
-              return (
-                <div
-                  key={r.teamId}
-                  className="flex items-baseline gap-[1vw] border-b border-zinc-200 dark:border-zinc-700 pb-[0.4vh]"
-                >
-                  <span
-                    className="font-bold tabular-nums text-zinc-400 dark:text-zinc-500 shrink-0 w-[3ch] text-right"
-                    style={{ fontSize: "clamp(0.7rem, 1.1vw, 1.5rem)" }}
-                  >
-                    {r.place}.
-                  </span>
-                  <span
-                    className="font-medium text-zinc-800 dark:text-zinc-200 truncate"
-                    style={{ fontSize: "clamp(0.7rem, 1.1vw, 1.5rem)" }}
-                  >
-                    {p1 ? shortName(p1) : "?"}{p2 ? ` & ${shortName(p2)}` : ""}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PodiumPillar({
-  place,
-  entry,
-  teamMap,
-  playerMap,
-  color,
-  heightPct,
-  gold,
-}: {
-  place: number;
-  entry: { teamId: string; place: number } | null;
-  teamMap: Map<string, TournamentTeam>;
-  playerMap: Map<string, Player>;
-  color: string;
-  heightPct: number;
-  gold?: boolean;
-}) {
-  const t = entry ? teamMap.get(entry.teamId) : null;
-  const p1 = t ? playerMap.get(t.player1_id) : null;
-  const p2 = t && t.player2_id ? playerMap.get(t.player2_id) : null;
-  return (
-    <div className="flex-1 min-w-0 flex flex-col items-center justify-end h-full gap-[1vh]">
-      <div className="text-center min-w-0 w-full px-[0.5vw]">
-        <div
-          className="font-bold leading-tight truncate"
-          style={{
-            fontSize: gold ? "clamp(1rem, 2.2vw, 3rem)" : "clamp(0.85rem, 1.6vw, 2.2rem)",
-            color: gold ? color : "#1f2937",
-          }}
-        >
-          {p1 ? shortName(p1) : "—"}
-        </div>
-        {p2 && (
-          <div
-            className="font-bold leading-tight truncate"
-            style={{
-              fontSize: gold ? "clamp(1rem, 2.2vw, 3rem)" : "clamp(0.85rem, 1.6vw, 2.2rem)",
-              color: gold ? color : "#1f2937",
-            }}
-          >
-            {shortName(p2)}
-          </div>
-        )}
-      </div>
-      <div
-        className="w-full rounded-t-2xl flex items-start justify-center pt-[1.5vh]"
+    <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-[3vh] px-[4vw]">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/icons/icon-trophy.svg"
+        alt=""
+        aria-hidden="true"
         style={{
-          height: `${heightPct}%`,
-          background: `linear-gradient(180deg, ${color} 0%, ${color}cc 100%)`,
-          boxShadow: gold ? `0 0 40px -8px ${color}` : undefined,
+          width: "clamp(10rem, 28vw, 32rem)",
+          height: "auto",
+          filter: `drop-shadow(0 30px 60px ${accent}55)`,
+        }}
+      />
+      <div
+        className="uppercase font-black"
+        style={{
+          fontSize: "clamp(1rem, 2.2vw, 2.6rem)",
+          letterSpacing: "0.32em",
+          color: accent,
         }}
       >
-        <div
-          className="font-black text-white"
-          style={{ fontSize: gold ? "clamp(2rem, 6vw, 8rem)" : "clamp(1.5rem, 4.5vw, 6rem)" }}
-        >
-          {place}
-        </div>
+        Vinnare
+      </div>
+      <div
+        className="text-center font-black text-zinc-900 dark:text-zinc-50"
+        style={{
+          fontSize: "clamp(2.5rem, 7vw, 9rem)",
+          lineHeight: 1.02,
+          wordBreak: "break-word",
+        }}
+      >
+        <div>{p1 ? shortName(p1) : "—"}</div>
+        {p2 && <div>{shortName(p2)}</div>}
       </div>
     </div>
   );
