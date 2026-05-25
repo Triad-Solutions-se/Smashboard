@@ -2767,7 +2767,7 @@ function GroupColumn({
         </div>
         {groupComplete && (
           <span
-            className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/20 text-white border border-white/30"
+            className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60"
             title="Alla matcher i gruppen är spelade"
           >
             Gruppspel klart
