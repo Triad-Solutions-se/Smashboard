@@ -430,9 +430,6 @@ function HostInner({
   type WinnerPodium = {
     bracket: string | null;
     first: string | null;
-    second: string | null;
-    third: string | null;
-    thirdAlt: string | null;
   };
   const winners = useMemo<WinnerPodium[] | null>(() => {
     if (tournamentPhase !== "done") return null;
@@ -442,45 +439,17 @@ function HostInner({
       return bracketKeys.map((bracket) => {
         const bMatches = koMatches.filter((m) => (m.bracket ?? "A") === bracket);
         const final = bMatches.find((m) => m.stage === "final" && m.status === "completed");
-        const bronze = bMatches.find((m) => m.stage === "bronze" && m.status === "completed");
-        const semis = bMatches.filter((m) => m.stage === "semi_final" && m.status === "completed");
-
         let first: string | null = null;
-        let second: string | null = null;
-        let third: string | null = null;
-        let thirdAlt: string | null = null;
-
         if (final) {
           const t1Wins = (final.score_team1 ?? 0) > (final.score_team2 ?? 0);
           first = t1Wins ? final.team1_id : final.team2_id;
-          second = t1Wins ? final.team2_id : final.team1_id;
         }
-        if (bronze) {
-          const t1Wins = (bronze.score_team1 ?? 0) > (bronze.score_team2 ?? 0);
-          third = t1Wins ? bronze.team1_id : bronze.team2_id;
-        } else if (semis.length >= 2) {
-          const losers = semis.slice(0, 2).map((m) => {
-            const t1Wins = (m.score_team1 ?? 0) > (m.score_team2 ?? 0);
-            return t1Wins ? m.team2_id : m.team1_id;
-          });
-          third = losers[0] ?? null;
-          thirdAlt = losers[1] ?? null;
-        }
-
-        return { bracket, first, second, third, thirdAlt };
+        return { bracket, first };
       });
     }
 
     const overall = computeStandings(teams, matches, playerMap);
-    return [
-      {
-        bracket: null,
-        first: overall[0]?.team_id ?? null,
-        second: overall[1]?.team_id ?? null,
-        third: overall[2]?.team_id ?? null,
-        thirdAlt: null,
-      },
-    ];
+    return [{ bracket: null, first: overall[0]?.team_id ?? null }];
   }, [tournamentPhase, hasKO, koMatches, teams, matches, playerMap]);
 
   // KO progress aggregated per bracket (A/B/C…). Used both in the header
@@ -1880,129 +1849,7 @@ function MatchCard({
 type WinnerPodiumRow = {
   bracket: string | null;
   first: string | null;
-  second: string | null;
-  third: string | null;
-  thirdAlt: string | null;
 };
-
-const PODIUM_STYLES = {
-  1: {
-    barHeight: "h-36 sm:h-44",
-    barGradient:
-      "from-amber-200 via-amber-400 to-amber-600 dark:from-amber-300 dark:via-amber-500 dark:to-amber-700",
-    barShadow:
-      "shadow-[0_18px_40px_-16px_rgba(245,158,11,0.65)] dark:shadow-[0_18px_40px_-12px_rgba(245,158,11,0.55)]",
-    avatarRing: "ring-amber-400/80 dark:ring-amber-300/80",
-    avatarGlow:
-      "shadow-[0_0_0_8px_rgba(251,191,36,0.22)] dark:shadow-[0_0_0_8px_rgba(251,191,36,0.18)]",
-    avatarGradient:
-      "bg-gradient-to-br from-amber-100 via-amber-300 to-amber-500 dark:from-amber-200 dark:via-amber-400 dark:to-amber-600",
-    initialsText: "text-amber-950",
-    numberText: "text-amber-950",
-    label: "Guld",
-    labelColor: "text-amber-700 dark:text-amber-300",
-  },
-  2: {
-    barHeight: "h-28 sm:h-32",
-    barGradient:
-      "from-zinc-100 via-zinc-300 to-zinc-400 dark:from-zinc-300 dark:via-zinc-400 dark:to-zinc-500",
-    barShadow:
-      "shadow-[0_14px_30px_-14px_rgba(82,82,91,0.55)] dark:shadow-[0_14px_30px_-12px_rgba(161,161,170,0.5)]",
-    avatarRing: "ring-zinc-300 dark:ring-zinc-400/80",
-    avatarGlow:
-      "shadow-[0_0_0_8px_rgba(212,212,216,0.45)] dark:shadow-[0_0_0_8px_rgba(161,161,170,0.25)]",
-    avatarGradient:
-      "bg-gradient-to-br from-white via-zinc-200 to-zinc-400 dark:from-zinc-200 dark:via-zinc-300 dark:to-zinc-500",
-    initialsText: "text-zinc-800",
-    numberText: "text-zinc-800",
-    label: "Silver",
-    labelColor: "text-zinc-600 dark:text-zinc-300",
-  },
-  3: {
-    barHeight: "h-24 sm:h-28",
-    barGradient:
-      "from-orange-300 via-orange-500 to-orange-700 dark:from-orange-400 dark:via-orange-600 dark:to-orange-800",
-    barShadow:
-      "shadow-[0_14px_30px_-14px_rgba(234,88,12,0.6)] dark:shadow-[0_14px_30px_-12px_rgba(234,88,12,0.5)]",
-    avatarRing: "ring-orange-400/80 dark:ring-orange-400/80",
-    avatarGlow:
-      "shadow-[0_0_0_8px_rgba(234,88,12,0.22)] dark:shadow-[0_0_0_8px_rgba(234,88,12,0.2)]",
-    avatarGradient:
-      "bg-gradient-to-br from-orange-200 via-orange-400 to-orange-600 dark:from-orange-300 dark:via-orange-500 dark:to-orange-700",
-    initialsText: "text-orange-50",
-    numberText: "text-orange-50",
-    label: "Brons",
-    labelColor: "text-orange-700 dark:text-orange-400",
-  },
-} as const;
-
-function PodiumColumn({
-  position,
-  name,
-  subname,
-}: {
-  position: 1 | 2 | 3;
-  name: string | null;
-  subname?: string | null;
-}) {
-  const s = PODIUM_STYLES[position];
-  const initials = (text: string | null): string => {
-    if (!text) return "–";
-    const parts = text.split("&").map((p) => p.trim()).filter(Boolean);
-    const letters = parts
-      .slice(0, 2)
-      .map((p) => p.charAt(0).toUpperCase())
-      .join("");
-    return letters || "–";
-  };
-  return (
-    <div className="flex-1 flex flex-col items-center min-w-0 max-w-[160px] sm:max-w-[200px]">
-      {position === 1 && (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 18"
-          fill="currentColor"
-          className="w-9 h-7 sm:w-11 sm:h-8 text-amber-500 dark:text-amber-400 mb-1 drop-shadow"
-          aria-hidden="true"
-        >
-          <path d="M2 4l4 6 6-9 6 9 4-6-2 12H4z" />
-          <rect x="3" y="15" width="18" height="2" rx="0.5" />
-        </svg>
-      )}
-      <div
-        className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full ${s.avatarGradient} ${s.avatarGlow} ring-2 ${s.avatarRing} flex items-center justify-center mb-3`}
-      >
-        <span
-          className={`text-lg sm:text-2xl font-black tracking-wide ${s.initialsText}`}
-        >
-          {initials(name)}
-        </span>
-      </div>
-      <div className="mb-3 flex flex-col items-center text-center w-full px-1">
-        <div
-          className={`text-[10px] sm:text-xs uppercase tracking-[0.25em] font-black ${s.labelColor}`}
-        >
-          {s.label}
-        </div>
-        <div className="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-50 leading-snug break-words max-w-full mt-1">
-          {name ?? "–"}
-        </div>
-        {subname && (
-          <div className="text-sm sm:text-base font-bold text-zinc-900 dark:text-zinc-50 leading-snug break-words max-w-full">
-            {subname}
-          </div>
-        )}
-      </div>
-      <div
-        className={`relative w-full ${s.barHeight} rounded-t-xl bg-gradient-to-b ${s.barGradient} ${s.barShadow} flex items-start justify-center pt-3`}
-      >
-        <span className={`text-4xl sm:text-5xl font-black ${s.numberText}`}>
-          {position}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function WinnerTable({
   tenant,
@@ -2155,9 +2002,6 @@ function WinnerTable({
         >
           {winners.map((w) => {
             const first = nameOf(w.first);
-            const second = nameOf(w.second);
-            const third = nameOf(w.third);
-            const thirdAlt = nameOf(w.thirdAlt);
             return (
               <div
                 key={w.bracket ?? "main"}
@@ -2165,7 +2009,7 @@ function WinnerTable({
               >
                 {showBracketLabel && (
                   <div
-                    className="text-[10px] sm:text-xs uppercase tracking-[0.28em] font-black mb-5 px-4 py-1.5 rounded-full border"
+                    className="text-[10px] sm:text-xs uppercase tracking-[0.28em] font-black mb-6 px-4 py-1.5 rounded-full border"
                     style={{
                       borderColor: `${accent}55`,
                       color: accent,
@@ -2177,13 +2021,21 @@ function WinnerTable({
                       : "Slutställning"}
                   </div>
                 )}
-                <div className="w-full max-w-lg flex items-end justify-center gap-2 sm:gap-3">
-                  <PodiumColumn position={2} name={second} />
-                  <PodiumColumn position={1} name={first} />
-                  <PodiumColumn position={3} name={third} subname={thirdAlt} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/icons/icon-trophy.svg"
+                  alt=""
+                  aria-hidden="true"
+                  className="w-40 h-40 sm:w-56 sm:h-56 md:w-64 md:h-64 drop-shadow-[0_18px_36px_rgba(245,158,11,0.45)]"
+                />
+                <div className="mt-6 text-[10px] sm:text-xs uppercase tracking-[0.32em] font-black text-amber-700 dark:text-amber-300">
+                  Vinnare
+                </div>
+                <div className="mt-3 text-3xl sm:text-5xl md:text-6xl font-black text-zinc-900 dark:text-zinc-50 text-center leading-tight break-words max-w-full px-2">
+                  {first ?? "–"}
                 </div>
                 <div
-                  className="w-full max-w-lg h-1.5 mt-0 rounded-b bg-gradient-to-r from-transparent via-zinc-300 to-transparent dark:via-zinc-700"
+                  className="w-full max-w-lg h-1.5 mt-8 rounded-b bg-gradient-to-r from-transparent via-zinc-300 to-transparent dark:via-zinc-700"
                   aria-hidden
                 />
                 <div
