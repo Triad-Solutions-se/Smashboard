@@ -71,6 +71,67 @@ export function bracketLabelForMode(
   return bracketMode === "single" ? "Slutspel" : bracketLabel(letter);
 }
 
+// Drops the letter prefix when there is only one bracket. Use this for the
+// auto-bracketing flow where multi-bracketness is derived from match data
+// rather than from a stored mode.
+export function bracketLabelAuto(letter: string, hasMultiple: boolean): string {
+  return hasMultiple ? bracketLabel(letter) : "Slutspel";
+}
+
+// Auto-derived bracket layout. Returns one entry per bracket holding the team
+// count for that bracket. Rule:
+//   - totalAdvancing < 2 → []
+//   - totalAdvancing % 8 === 0 AND totalAdvancing >= 16 → N brackets of 8
+//     (A-slutspel, B-slutspel, … each a clean QF)
+//   - otherwise → a single bracket with all advancing teams
+//
+// The "8-clean-multiple" rule keeps splits predictable: hosts never end up
+// with an awkward 7-team or 9-team A-bracket alongside a 1-team B-bracket.
+export function autoBracketSizes(totalAdvancing: number): number[] {
+  if (totalAdvancing < 2) return [];
+  if (totalAdvancing >= 16 && totalAdvancing % 8 === 0) {
+    return new Array(totalAdvancing / 8).fill(8);
+  }
+  return [totalAdvancing];
+}
+
+// Per-bracket seed-ordered team IDs under the auto-bracket rule.
+//   - Single-bracket case (sizes.length === 1): uses (rank, group order) via
+//     `collectSeeds`, matching `generateSingleBracketFirstRound` so the
+//     existing auto-advance can recover round-1 pair indices.
+//   - Multi-bracket case: uses overall ranking via `computeSeedOrder`,
+//     chunking into 8-team slices (top 8 → A, next 8 → B, …).
+export function autoBracketSeedOrders(
+  groupStandings: GroupStanding[],
+  qualified: QualifiedTeam[]
+): Map<string, string[]> {
+  const totalAdvancing = groupStandings.reduce(
+    (s, g) => s + g.standings.length,
+    0
+  );
+  const sizes = autoBracketSizes(totalAdvancing);
+  const out = new Map<string, string[]>();
+  if (sizes.length === 0) return out;
+
+  if (sizes.length === 1) {
+    const apg = Math.max(0, ...groupStandings.map((g) => g.standings.length));
+    if (apg > 0) {
+      const seeds = collectSeeds(groupStandings, apg);
+      out.set("A", seeds.map((s) => s.team_id));
+    }
+    return out;
+  }
+
+  const seedOrder = computeSeedOrder(qualified).map((q) => q.team_id);
+  let offset = 0;
+  for (let bi = 0; bi < sizes.length; bi++) {
+    const size = sizes[bi];
+    out.set(bracketLetter(bi), seedOrder.slice(offset, offset + size));
+    offset += size;
+  }
+  return out;
+}
+
 // Number of brackets a tournament should produce: one per advancing rank.
 // With ≥2 groups: equals the largest standings.length (i.e. advances_per_group).
 // With 1 group: a single combined bracket of all advancing teams.
@@ -595,6 +656,65 @@ export function generateSingleBracketFirstRound(
     matches.push(makeMatch(tournamentId, a, b, stage, court, 1, "A"));
   }
   return matches;
+}
+
+// Auto-bracket first-round generator. Replaces the legacy host-picked
+// "single" vs "split" choice — the layout falls out of the team count:
+//   - sizes.length === 1 → delegate to `generateSingleBracketFirstRound`
+//     (existing single-bracket behaviour, possibly QF with internal byes).
+//   - sizes.length > 1   → emit one 8-team QF bracket per slice. Top 8 by
+//     overall seed → A-slutspel, next 8 → B-slutspel, etc. Courts are split
+//     across brackets so each bracket runs on its own subset.
+export function generateAutoFirstRound(
+  groupStandings: GroupStanding[],
+  qualified: QualifiedTeam[],
+  courts: Court[],
+  tournamentId: string
+): GeneratedKOMatch[] {
+  const totalAdvancing = groupStandings.reduce(
+    (s, g) => s + g.standings.length,
+    0
+  );
+  const sizes = autoBracketSizes(totalAdvancing);
+  if (sizes.length === 0) return [];
+
+  if (sizes.length === 1) {
+    return generateSingleBracketFirstRound(groupStandings, courts, tournamentId);
+  }
+
+  const seedOrder = computeSeedOrder(qualified);
+  const out: GeneratedKOMatch[] = [];
+  let offset = 0;
+  for (let bi = 0; bi < sizes.length; bi++) {
+    const size = sizes[bi];
+    const chunk = seedOrder.slice(offset, offset + size);
+    offset += size;
+    if (chunk.length < 2) continue;
+
+    const seedOrderedIds = chunk.map((q) => q.team_id);
+    const slots = buildBracketSlots(seedOrderedIds);
+    const groupIdByTeam = new Map<string, string>();
+    for (const q of chunk) groupIdByTeam.set(q.team_id, q.groupId);
+    applyAntiRematchSwap(slots, groupIdByTeam);
+
+    const bracketCourtList = bracketCourts(courts, bi, sizes.length);
+    const B = slots.length;
+    const stage = seededStageForRound(B);
+    const letter = bracketLetter(bi);
+    let courtIdx = 0;
+    for (let p = 0; p < B / 2; p++) {
+      const a = slots[2 * p];
+      const b = slots[2 * p + 1];
+      if (!a || !b) continue;
+      const court =
+        bracketCourtList.length > 0
+          ? bracketCourtList[courtIdx % bracketCourtList.length]
+          : null;
+      courtIdx++;
+      out.push(makeMatch(tournamentId, a, b, stage, court, 1, letter));
+    }
+  }
+  return out;
 }
 
 // Returns the pair-index (0-based) of each bye team in seed order, given the
