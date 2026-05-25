@@ -33,11 +33,12 @@ import {
   generateFirstKORound,
   generateNextKORound,
   generateSeededFirstRound,
-  generateSingleBracketFirstRound,
+  generateAutoFirstRound,
+  autoBracketSeedOrders,
   computeSeedOrder,
   computeSeededByePairIndices,
   collectSeeds,
-  bracketLabelForMode,
+  bracketLabelAuto,
   bracketLetter,
   type GroupStanding,
   type QualifiedTeam,
@@ -533,6 +534,10 @@ function HostInner({
     [koByBracket]
   );
 
+  // Number of distinct slutspel brackets present in the KO match data. Drives
+  // labelling — single bracket → "Slutspel"; multi → "A-slutspel"/"B-slutspel"/…
+  const hasMultipleBrackets = sortedBrackets.length > 1;
+
   // Group standings for playoff panel
   const groupStandings = useMemo((): GroupStanding[] => {
     if (advancesPerGroup === 0) return [];
@@ -581,12 +586,17 @@ function HostInner({
     return stageLabel(m, groupMap);
   }
 
-  // Single-bracket advance: all KO matches sit in a single bracket. Round 1
-  // emission order encodes pair-index — sorting completed matches by
-  // created_at recovers it. Byes (top seeds whose slot pair contained a BYE)
-  // are interleaved into the round-2 entrants list at their known pair index.
-  // Subsequent rounds pair adjacent winners (matches[0]+matches[1], etc).
-  // Used for both formation === "seeded" (legacy) and bracket_mode === "single".
+  // Per-bracket seeded advance. Each bracket runs the same algorithm in
+  // isolation: round 1 emission order encodes pair-index (recovered by
+  // sorting completed matches by created_at), byes (top seeds whose slot
+  // pair contained a BYE) are interleaved into round 2 at their known pair
+  // index, and subsequent rounds pair adjacent winners.
+  //
+  // Used for: formation === "seeded" (legacy single-bracket) AND
+  // bracket_mode === "single" — covering both legacy single-bracket
+  // tournaments and the new auto-bracket flow (which may carry multiple
+  // bracket letters in match rows even when bracket_mode is stored as
+  // "single"). Bracket count is inferred from the match data.
   async function autoAdvanceSeededKO(loaded: Loaded): Promise<boolean> {
     const { tournament: t, courts: c, matches: allMatches, groups: gs, teams: tm } = loaded;
     const apg = t.advances_per_group ?? 0;
@@ -607,32 +617,37 @@ function HostInner({
       return { groupId: grp.id, groupName: grp.name, standings };
     });
 
-    // bracket_mode "single" preserves (rank, group order) so first-round
-    // pairings deterministically map G1R1 vs G_lastR2 etc. The legacy seeded
-    // formation orders by stats — kept as fallback for those tournaments.
-    let seedOrderedIds: string[];
-    if (t.bracket_mode === "single") {
-      const seeds = collectSeeds(groupStandings, apg);
-      seedOrderedIds = seeds.map((s) => s.team_id);
-    } else {
-      const qualified = buildQualifiedTeams(groupStandings, teamById);
-      seedOrderedIds = computeSeedOrder(qualified).map((q) => q.team_id);
-    }
-    if (seedOrderedIds.length < 2) return false;
-
-    const byes = computeSeededByePairIndices(seedOrderedIds);
-    const byeByPair = new Map(byes.map((b) => [b.pairIndex, b.teamId]));
-
-    // Round-1 emission order = pair-index order over non-bye pairs.
-    const koByRound = new Map<number, TournamentMatch[]>();
+    // Partition existing KO matches by bracket letter so each bracket can
+    // advance independently.
+    const koByBracket = new Map<string, TournamentMatch[]>();
     for (const m of koAll) {
-      const arr = koByRound.get(m.round_number) ?? [];
+      const b = m.bracket ?? "A";
+      const arr = koByBracket.get(b) ?? [];
       arr.push(m);
-      koByRound.set(m.round_number, arr);
+      koByBracket.set(b, arr);
     }
-    const sortedRounds = [...koByRound.keys()].sort((a, b) => a - b);
-    if (sortedRounds.length === 0) return false;
-    const firstRound = sortedRounds[0];
+
+    // Compute per-bracket seed-ordered team IDs. For multi-bracket data
+    // (auto-mode with ≥16 advancing & divisible by 8) we use
+    // `autoBracketSeedOrders` which slices the overall-ranked seed list into
+    // 8-team chunks. For single-bracket data we preserve the legacy seeding
+    // logic so already-running tournaments keep producing the same pairings.
+    let seedOrdersByBracket: Map<string, string[]>;
+    if (koByBracket.size > 1) {
+      const qualified = buildQualifiedTeams(groupStandings, teamById);
+      seedOrdersByBracket = autoBracketSeedOrders(groupStandings, qualified);
+    } else {
+      const soleBracket = koByBracket.keys().next().value ?? "A";
+      let seedOrderedIds: string[];
+      if (t.bracket_mode === "single") {
+        const seeds = collectSeeds(groupStandings, apg);
+        seedOrderedIds = seeds.map((s) => s.team_id);
+      } else {
+        const qualified = buildQualifiedTeams(groupStandings, teamById);
+        seedOrderedIds = computeSeedOrder(qualified).map((q) => q.team_id);
+      }
+      seedOrdersByBracket = new Map([[soleBracket, seedOrderedIds]]);
+    }
 
     function winnerOf(m: TournamentMatch): string {
       return (m.score_team1 ?? 0) > (m.score_team2 ?? 0) ? m.team1_id : m.team2_id;
@@ -642,94 +657,112 @@ function HostInner({
     }
 
     let generated = false;
-    for (const roundNum of sortedRounds) {
-      const matchesThisRound = (koByRound.get(roundNum) ?? [])
-        .slice()
-        .sort((a, b) => {
-          const dt = a.created_at.localeCompare(b.created_at);
-          return dt !== 0 ? dt : a.id.localeCompare(b.id);
-        });
-      const nextRoundNum = roundNum + 1;
-      const nextRoundMatches = (allMatches.filter(
-        (m) => m.round_number === nextRoundNum && m.stage !== "group" && m.stage !== "bronze"
-      ));
-      if (nextRoundMatches.length > 0) continue;
-      if (!matchesThisRound.every((m) => m.status === "completed")) continue;
+    for (const [bracket, bracketMatches] of koByBracket) {
+      const seedOrderedIds = seedOrdersByBracket.get(bracket) ?? [];
+      if (seedOrderedIds.length < 2) continue;
 
-      let entrants: string[];
-      if (roundNum === firstRound && byes.length > 0) {
-        // Interleave byes by pair index with match winners in emission order.
-        const pairCount = matchesThisRound.length + byes.length;
-        entrants = new Array(pairCount);
-        let mi = 0;
-        for (let p = 0; p < pairCount; p++) {
-          if (byeByPair.has(p)) {
-            entrants[p] = byeByPair.get(p)!;
-          } else {
-            entrants[p] = winnerOf(matchesThisRound[mi++]);
-          }
-        }
-      } else {
-        entrants = matchesThisRound.map(winnerOf);
+      const byes = computeSeededByePairIndices(seedOrderedIds);
+      const byeByPair = new Map(byes.map((b) => [b.pairIndex, b.teamId]));
+
+      const koByRound = new Map<number, TournamentMatch[]>();
+      for (const m of bracketMatches) {
+        const arr = koByRound.get(m.round_number) ?? [];
+        arr.push(m);
+        koByRound.set(m.round_number, arr);
       }
+      const sortedRounds = [...koByRound.keys()].sort((a, b) => a - b);
+      if (sortedRounds.length === 0) continue;
+      const firstRound = sortedRounds[0];
 
-      if (entrants.length < 2) continue;
-      const M = entrants.length;
-      const stage: MatchStage = M <= 2 ? "final" : M <= 4 ? "semi_final" : "quarter_final";
-
-      const newMatches: Omit<TournamentMatch, "id" | "created_at">[] = [];
-      for (let i = 0; i < M; i += 2) {
-        const a = entrants[i];
-        const b = entrants[i + 1];
-        if (!a || !b) continue;
-        // Inherit a feeder court when possible, else round-robin across all courts.
-        const feederMatch = matchesThisRound.find(
-          (mm) => winnerOf(mm) === a || winnerOf(mm) === b
+      for (const roundNum of sortedRounds) {
+        const matchesThisRound = (koByRound.get(roundNum) ?? [])
+          .slice()
+          .sort((a, b) => {
+            const dt = a.created_at.localeCompare(b.created_at);
+            return dt !== 0 ? dt : a.id.localeCompare(b.id);
+          });
+        const nextRoundNum = roundNum + 1;
+        const nextRoundMatches = allMatches.filter(
+          (m) =>
+            m.round_number === nextRoundNum &&
+            m.stage !== "group" &&
+            m.stage !== "bronze" &&
+            (m.bracket ?? "A") === bracket
         );
-        const inherited =
-          feederMatch?.court_id != null
-            ? c.find((cc) => cc.id === feederMatch.court_id) ?? null
-            : null;
-        const court = inherited ?? c[(i / 2) % Math.max(1, c.length)] ?? null;
-        newMatches.push({
-          tournament_id: t.id,
-          group_id: null,
-          round_number: nextRoundNum,
-          court_id: court?.id ?? null,
-          team1_id: a,
-          team2_id: b,
-          score_team1: null,
-          score_team2: null,
-          status: "scheduled",
-          stage,
-          bracket: "A",
-        });
-      }
+        if (nextRoundMatches.length > 0) continue;
+        if (!matchesThisRound.every((m) => m.status === "completed")) continue;
 
-      // Bronze: emitted when we just produced the final and there are exactly
-      // two prior-round (SF) matches whose losers can play for 3rd place.
-      if (t.has_bronze && stage === "final" && matchesThisRound.length === 2) {
-        const l1 = loserOf(matchesThisRound[0]);
-        const l2 = loserOf(matchesThisRound[1]);
-        const bronzeCourt = c[Math.floor(c.length / 2)] ?? c[0] ?? null;
-        newMatches.push({
-          tournament_id: t.id,
-          group_id: null,
-          round_number: nextRoundNum,
-          court_id: bronzeCourt?.id ?? null,
-          team1_id: l1,
-          team2_id: l2,
-          score_team1: null,
-          score_team2: null,
-          status: "scheduled",
-          stage: "bronze",
-          bracket: "A",
-        });
-      }
+        let entrants: string[];
+        if (roundNum === firstRound && byes.length > 0) {
+          const pairCount = matchesThisRound.length + byes.length;
+          entrants = new Array(pairCount);
+          let mi = 0;
+          for (let p = 0; p < pairCount; p++) {
+            if (byeByPair.has(p)) {
+              entrants[p] = byeByPair.get(p)!;
+            } else {
+              entrants[p] = winnerOf(matchesThisRound[mi++]);
+            }
+          }
+        } else {
+          entrants = matchesThisRound.map(winnerOf);
+        }
 
-      if (newMatches.length > 0) {
-        await insertMatches(newMatches);
-        generated = true;
+        if (entrants.length < 2) continue;
+        const M = entrants.length;
+        const stage: MatchStage = M <= 2 ? "final" : M <= 4 ? "semi_final" : "quarter_final";
+
+        const newMatches: Omit<TournamentMatch, "id" | "created_at">[] = [];
+        for (let i = 0; i < M; i += 2) {
+          const a = entrants[i];
+          const b = entrants[i + 1];
+          if (!a || !b) continue;
+          const feederMatch = matchesThisRound.find(
+            (mm) => winnerOf(mm) === a || winnerOf(mm) === b
+          );
+          const inherited =
+            feederMatch?.court_id != null
+              ? c.find((cc) => cc.id === feederMatch.court_id) ?? null
+              : null;
+          const court = inherited ?? c[(i / 2) % Math.max(1, c.length)] ?? null;
+          newMatches.push({
+            tournament_id: t.id,
+            group_id: null,
+            round_number: nextRoundNum,
+            court_id: court?.id ?? null,
+            team1_id: a,
+            team2_id: b,
+            score_team1: null,
+            score_team2: null,
+            status: "scheduled",
+            stage,
+            bracket,
+          });
+        }
+
+        if (t.has_bronze && stage === "final" && matchesThisRound.length === 2) {
+          const l1 = loserOf(matchesThisRound[0]);
+          const l2 = loserOf(matchesThisRound[1]);
+          const bronzeCourt = c[Math.floor(c.length / 2)] ?? c[0] ?? null;
+          newMatches.push({
+            tournament_id: t.id,
+            group_id: null,
+            round_number: nextRoundNum,
+            court_id: bronzeCourt?.id ?? null,
+            team1_id: l1,
+            team2_id: l2,
+            score_team1: null,
+            score_team2: null,
+            status: "scheduled",
+            stage: "bronze",
+            bracket,
+          });
+        }
+
+        if (newMatches.length > 0) {
+          await insertMatches(newMatches);
+          generated = true;
+        }
       }
     }
 
@@ -1045,7 +1078,7 @@ function HostInner({
                   className="text-[10px] uppercase tracking-wide leading-none mb-0.5 font-semibold"
                   style={{ color: koStageBadgeColor(runningStage ?? "final") }}
                 >
-                  {bracketLabelForMode(bracket, tournament.bracket_mode)}
+                  {bracketLabelAuto(bracket, hasMultipleBrackets)}
                   {runningStage && (
                     <span className="text-zinc-400 font-normal ml-1">
                       · {KO_STAGE_LABEL[runningStage] ?? runningStage}
@@ -1231,7 +1264,7 @@ function HostInner({
           winners={winners}
           teamMap={teamMap}
           playerMap={playerMap}
-          bracketMode={tournament.bracket_mode}
+          hasMultipleBrackets={hasMultipleBrackets}
           accent={accent}
         />
       )}
@@ -1290,14 +1323,14 @@ function HostInner({
                 koMatches={koMatches}
                 teamMap={teamMap}
                 playerMap={playerMap}
-                bracketMode={tournament.bracket_mode}
+                hasMultipleBrackets={hasMultipleBrackets}
               />
             ) : (
               <KOResultsPanel
                 koMatches={koMatches}
                 teamMap={teamMap}
                 playerMap={playerMap}
-                bracketMode={tournament.bracket_mode}
+                hasMultipleBrackets={hasMultipleBrackets}
               />
             )}
             {sortedBrackets.length === 0 ? (
@@ -1313,7 +1346,7 @@ function HostInner({
                   <BracketSection
                     key={bracket}
                     bracket={bracket}
-                    bracketMode={tournament.bracket_mode}
+                    hasMultipleBrackets={hasMultipleBrackets}
                     bracketMatches={koByBracket.get(bracket) ?? []}
                     progress={
                       koBracketProgress.find((p) => p.bracket === bracket) ?? {
@@ -1396,27 +1429,57 @@ function PlayoffPanel({
   const [generating, setGenerating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const isSingleBracket = tournament.bracket_mode === "single";
+  const isLegacySplit = tournament.bracket_mode === "split";
+  const isLegacySeeded = tournament.formation === "seeded";
   // Preview every bracket's first-round matchups, regardless of court selection.
   const previewMatchups = useMemo(() => {
-    if (isSingleBracket) {
-      return generateSingleBracketFirstRound(groupStandings, [], tournament.id);
+    if (isLegacySplit) {
+      return generateFirstKORound(groupStandings, [], [], tournament.id, hasBronze);
     }
-    if (tournament.formation === "seeded") {
+    if (isLegacySeeded) {
       const qualified = buildQualifiedTeams(groupStandings, teamMap);
       return generateSeededFirstRound(qualified, [], tournament.id, "A");
     }
-    return generateFirstKORound(groupStandings, [], [], tournament.id, hasBronze);
+    const qualified = buildQualifiedTeams(groupStandings, teamMap);
+    return generateAutoFirstRound(groupStandings, qualified, [], tournament.id);
   }, [
     groupStandings,
     tournament.id,
-    tournament.formation,
-    isSingleBracket,
+    isLegacySplit,
+    isLegacySeeded,
     hasBronze,
     teamMap,
   ]);
 
-  // One bracket entry per advancing rank (or 1 entry for single-group fallback).
+  // Per-team bracket assignment for the standings preview. For legacy split
+  // mode this maps group-rank → bracket letter; for the new auto path it
+  // mirrors `autoBracketSeedOrders` so the host sees which slutspel each
+  // advancing team will land in.
+  const bracketByTeamId = useMemo(() => {
+    const out = new Map<string, string>();
+    if (isLegacySplit) {
+      for (const g of groupStandings) {
+        g.standings.forEach((s, rank) => {
+          out.set(s.team_id, bracketLetter(rank));
+        });
+      }
+      return out;
+    }
+    if (isLegacySeeded) {
+      for (const g of groupStandings) {
+        for (const s of g.standings) out.set(s.team_id, "A");
+      }
+      return out;
+    }
+    const qualified = buildQualifiedTeams(groupStandings, teamMap);
+    const seeds = autoBracketSeedOrders(groupStandings, qualified);
+    for (const [letter, ids] of seeds) {
+      for (const id of ids) out.set(id, letter);
+    }
+    return out;
+  }, [groupStandings, isLegacySplit, isLegacySeeded, teamMap]);
+
+  // One bracket entry per slutspel, summarising team count + matchups.
   type BracketPreview = {
     bracket: string;
     matches: typeof previewMatchups;
@@ -1433,22 +1496,22 @@ function PlayoffPanel({
       }
       entry.matches.push(m);
     }
-    // Compute team count per bracket from groupStandings
-    if (isSingleBracket || groupStandings.length <= 1) {
-      // One unified bracket — all advancing teams play in it.
-      const e = map.get("A");
-      if (e) e.teams = groupStandings.reduce((s, g) => s + g.standings.length, 0);
-    } else {
-      for (const [letter, e] of map) {
-        const rank = letter.charCodeAt(0) - "A".charCodeAt(0);
-        e.teams = groupStandings.reduce(
-          (s, g) => s + (rank < g.standings.length ? 1 : 0),
-          0
-        );
-      }
+    // Team count per bracket — derived from per-team assignments so it's
+    // consistent across legacy and auto paths.
+    for (const [, letter] of bracketByTeamId) {
+      const entry = map.get(letter);
+      if (entry) entry.teams += 1;
+    }
+    // Single-bracket fallback when no matches yet were produced for a letter
+    // (e.g. <2 advancing teams).
+    if (map.size === 0 && bracketByTeamId.size > 0) {
+      const teams = bracketByTeamId.size;
+      map.set("A", { bracket: "A", matches: [], teams });
     }
     return [...map.values()].sort((a, b) => a.bracket.localeCompare(b.bracket));
-  }, [previewMatchups, groupStandings, isSingleBracket]);
+  }, [previewMatchups, bracketByTeamId]);
+
+  const hasMultipleBrackets = previewByBracket.length > 1;
 
   const recommendedCount = previewMatchups.length;
 
@@ -1464,25 +1527,26 @@ function PlayoffPanel({
     setErr(null);
     setGenerating(true);
     try {
-      const newMatches = isSingleBracket
-        ? generateSingleBracketFirstRound(
+      const newMatches = isLegacySplit
+        ? generateFirstKORound(
             groupStandings,
+            [],
             chosenCourts,
-            tournament.id
+            tournament.id,
+            hasBronze
           )
-        : tournament.formation === "seeded"
+        : isLegacySeeded
           ? generateSeededFirstRound(
               buildQualifiedTeams(groupStandings, teamMap),
               chosenCourts,
               tournament.id,
               "A"
             )
-          : generateFirstKORound(
+          : generateAutoFirstRound(
               groupStandings,
-              [],
+              buildQualifiedTeams(groupStandings, teamMap),
               chosenCourts,
-              tournament.id,
-              hasBronze
+              tournament.id
             );
       if (newMatches.length === 0) {
         setErr("Inga matcher kunde genereras. Kontrollera inställningarna.");
@@ -1534,7 +1598,7 @@ function PlayoffPanel({
               <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {g.standings.map((s, i) => {
                   const t = teamMap.get(s.team_id);
-                  const letter = bracketLetter(i);
+                  const letter = bracketByTeamId.get(s.team_id);
                   return (
                     <div
                       key={s.team_id}
@@ -1546,7 +1610,7 @@ function PlayoffPanel({
                           {t ? shortTeamName(t, playerMap) : s.teamName}
                         </span>
                       </div>
-                      {!isSingleBracket && (
+                      {hasMultipleBrackets && letter && (
                         <span className="shrink-0 text-[10px] uppercase tracking-wide font-semibold text-emerald-700 dark:text-emerald-400">
                           → {letter}
                         </span>
@@ -1568,7 +1632,7 @@ function PlayoffPanel({
             return (
               <div key={b.bracket} className="rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
                 <div className="px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 text-xs font-semibold text-zinc-700 dark:text-zinc-300 flex items-center justify-between gap-2">
-                  <span>{bracketLabelForMode(b.bracket, tournament.bracket_mode)}</span>
+                  <span>{bracketLabelAuto(b.bracket, hasMultipleBrackets)}</span>
                   <span className="text-zinc-400 font-normal">{b.teams} lag</span>
                 </div>
                 {path.length > 0 && (
@@ -2010,7 +2074,7 @@ function WinnerTable({
   winners,
   teamMap,
   playerMap,
-  bracketMode,
+  hasMultipleBrackets,
   accent,
 }: {
   tenant: Tenant;
@@ -2018,7 +2082,7 @@ function WinnerTable({
   winners: WinnerPodiumRow[];
   teamMap: Map<string, TournamentTeam>;
   playerMap: Map<string, Player>;
-  bracketMode: "single" | "split";
+  hasMultipleBrackets: boolean;
   accent: string;
 }) {
   const nameOf = (id: string | null): string | null => {
@@ -2173,7 +2237,7 @@ function WinnerTable({
                     }}
                   >
                     {w.bracket
-                      ? bracketLabelForMode(w.bracket, bracketMode)
+                      ? bracketLabelAuto(w.bracket, hasMultipleBrackets)
                       : "Slutställning"}
                   </div>
                 )}
@@ -2204,12 +2268,12 @@ function RestPositionsPanel({
   koMatches,
   teamMap,
   playerMap,
-  bracketMode,
+  hasMultipleBrackets,
 }: {
   koMatches: TournamentMatch[];
   teamMap: Map<string, TournamentTeam>;
   playerMap: Map<string, Player>;
-  bracketMode: "single" | "split";
+  hasMultipleBrackets: boolean;
 }) {
   type RestEntry = { rank: string; names: string[] };
 
@@ -2280,7 +2344,7 @@ function RestPositionsPanel({
           >
             {sortedBrackets.length > 1 && (
               <div className="px-3 py-1.5 text-xs font-semibold border-b border-zinc-100 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200">
-                {bracketLabelForMode(bracket, bracketMode)}
+                {bracketLabelAuto(bracket, hasMultipleBrackets)}
               </div>
             )}
             {entries.length === 0 ? (
@@ -2317,12 +2381,12 @@ function KOResultsPanel({
   koMatches,
   teamMap,
   playerMap,
-  bracketMode,
+  hasMultipleBrackets,
 }: {
   koMatches: TournamentMatch[];
   teamMap: Map<string, TournamentTeam>;
   playerMap: Map<string, Player>;
-  bracketMode: "single" | "split";
+  hasMultipleBrackets: boolean;
 }) {
   const completed = koMatches.filter((m) => m.status === "completed");
   if (completed.length === 0) return null;
@@ -2362,7 +2426,7 @@ function KOResultsPanel({
               className="border-r last:border-r-0 border-zinc-100 dark:border-zinc-800"
             >
               <div className="px-3 py-1.5 text-xs font-semibold border-b border-zinc-100 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200">
-                {bracketLabelForMode(bracket, bracketMode)}
+                {bracketLabelAuto(bracket, hasMultipleBrackets)}
               </div>
               <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {grouped.map(({ stage, matches }) => (
@@ -3024,7 +3088,7 @@ function GroupColumn({
 // match per court. Completed matches show in KOResultsPanel (above).
 function BracketSection({
   bracket,
-  bracketMode,
+  hasMultipleBrackets,
   bracketMatches,
   progress,
   courts,
@@ -3037,7 +3101,7 @@ function BracketSection({
   gamesPerMatch,
 }: {
   bracket: string;
-  bracketMode: "single" | "split";
+  hasMultipleBrackets: boolean;
   bracketMatches: TournamentMatch[];
   progress: { bracket: string; completed: number; total: number; runningStage: MatchStage | null };
   courts: Court[];
@@ -3083,7 +3147,7 @@ function BracketSection({
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col min-w-0">
       <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{bracketLabelForMode(bracket, bracketMode)}</h3>
+        <h3 className="text-sm font-semibold">{bracketLabelAuto(bracket, hasMultipleBrackets)}</h3>
         <div className="flex items-center gap-2 text-[11px] text-zinc-500 shrink-0">
           {progress.runningStage && (
             <span

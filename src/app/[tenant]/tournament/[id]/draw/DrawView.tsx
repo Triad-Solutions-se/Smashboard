@@ -9,7 +9,6 @@ import type {
   TournamentTeam,
   Court,
   Player,
-  BracketMode,
 } from "@/lib/supabase/types";
 import {
   updateDraftTeam,
@@ -29,7 +28,6 @@ type Stash = {
   numGroups: number;
   gamesPerMatch: number;
   advancesPerGroup: number;
-  bracketMode?: BracketMode;
   hasBronze: boolean;
   selectedCourts: string[];
   courtGroupIdx: Record<string, number>;
@@ -267,7 +265,7 @@ export function DrawView({
         total_rounds: totalRounds,
         formation: "manual",
         advances_per_group: stash.advancesPerGroup > 0 ? stash.advancesPerGroup : null,
-        bracket_mode: stash.bracketMode ?? "single",
+        bracket_mode: "single",
         has_bronze: stash.hasBronze,
         qf_court_ids: stash.qfCourtIds,
         sf_court_ids: stash.sfCourtIds,
