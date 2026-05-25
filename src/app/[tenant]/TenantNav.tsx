@@ -126,7 +126,7 @@ export function TenantNav({ slug, name, primaryColor, logoUrl, logoUrlDark }: Pr
           <img
             src="/icons/triad-logo.png"
             alt="Triad Solutions"
-            className="h-7 w-auto"
+            className="h-7 w-auto dark:[filter:brightness(0)_invert(1)]"
           />
         </div>
 

@@ -1062,7 +1062,7 @@ function HostInner({
               {tournament.name}
             </h1>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/triad-logo.png" alt="Triad Solutions" className="h-8 w-auto" />
+            <img src="/icons/triad-logo.png" alt="Triad Solutions" className="h-8 w-auto dark:[filter:brightness(0)_invert(1)]" />
           </div>
         )}
 
@@ -2146,7 +2146,7 @@ function WinnerTable({
           <img
             src="/icons/triad-logo.png"
             alt="Triad Solutions"
-            className="h-16 sm:h-24 w-auto object-contain"
+            className="h-16 sm:h-24 w-auto object-contain dark:[filter:brightness(0)_invert(1)]"
           />
         </div>
 
