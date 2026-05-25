@@ -96,15 +96,17 @@ export function autoBracketSizes(totalAdvancing: number): number[] {
 }
 
 // Per-bracket seed-ordered team IDs under the auto-bracket rule.
-//   - Single-bracket case (sizes.length === 1): uses (rank, group order) via
-//     `collectSeeds`, matching `generateSingleBracketFirstRound` so the
-//     existing auto-advance can recover round-1 pair indices.
-//   - Multi-bracket case: uses overall ranking via `computeSeedOrder`,
-//     chunking into 8-team slices (top 8 → A, next 8 → B, …).
+// Both single- and multi-bracket cases use (rank, group order) via
+// `collectSeeds`. Group label decides seed position within a rank tier — GF/GD
+// is ignored so the bracket structure is fully deterministic from the standings
+// layout. Multi-bracket simply slices the rank-major list into 8-team chunks
+// (top 8 → A, next 8 → B, …); `qualified` is accepted for API compatibility
+// but unused.
 export function autoBracketSeedOrders(
   groupStandings: GroupStanding[],
   qualified: QualifiedTeam[]
 ): Map<string, string[]> {
+  void qualified;
   const totalAdvancing = groupStandings.reduce(
     (s, g) => s + g.standings.length,
     0
@@ -113,20 +115,19 @@ export function autoBracketSeedOrders(
   const out = new Map<string, string[]>();
   if (sizes.length === 0) return out;
 
+  const apg = Math.max(0, ...groupStandings.map((g) => g.standings.length));
+  if (apg === 0) return out;
+  const allSeeds = collectSeeds(groupStandings, apg).map((s) => s.team_id);
+
   if (sizes.length === 1) {
-    const apg = Math.max(0, ...groupStandings.map((g) => g.standings.length));
-    if (apg > 0) {
-      const seeds = collectSeeds(groupStandings, apg);
-      out.set("A", seeds.map((s) => s.team_id));
-    }
+    out.set("A", allSeeds);
     return out;
   }
 
-  const seedOrder = computeSeedOrder(qualified).map((q) => q.team_id);
   let offset = 0;
   for (let bi = 0; bi < sizes.length; bi++) {
     const size = sizes[bi];
-    out.set(bracketLetter(bi), seedOrder.slice(offset, offset + size));
+    out.set(bracketLetter(bi), allSeeds.slice(offset, offset + size));
     offset += size;
   }
   return out;
@@ -662,15 +663,22 @@ export function generateSingleBracketFirstRound(
 // "single" vs "split" choice — the layout falls out of the team count:
 //   - sizes.length === 1 → delegate to `generateSingleBracketFirstRound`
 //     (existing single-bracket behaviour, possibly QF with internal byes).
-//   - sizes.length > 1   → emit one 8-team QF bracket per slice. Top 8 by
-//     overall seed → A-slutspel, next 8 → B-slutspel, etc. Courts are split
-//     across brackets so each bracket runs on its own subset.
+//   - sizes.length > 1   → emit one 8-team QF bracket per slice. The rank-major
+//     group-major seed list (G1R1, G2R1, …, G1R2, G2R2, …) is chunked into
+//     8-team slices: top 8 → A-slutspel, next 8 → B-slutspel, etc. Within a
+//     bracket, standard tennis seeding (1v8, 4v5, 2v7, 3v6) places opposite
+//     groups in opposite halves. Pairings are deterministic from the group
+//     standings layout — GF/GD does NOT re-seed.
+//
+// `qualified` is accepted for API compatibility but unused: the per-team
+// standings already arrive in the order chosen by `gruppspel.ts`.
 export function generateAutoFirstRound(
   groupStandings: GroupStanding[],
   qualified: QualifiedTeam[],
   courts: Court[],
   tournamentId: string
 ): GeneratedKOMatch[] {
+  void qualified;
   const totalAdvancing = groupStandings.reduce(
     (s, g) => s + g.standings.length,
     0
@@ -682,19 +690,21 @@ export function generateAutoFirstRound(
     return generateSingleBracketFirstRound(groupStandings, courts, tournamentId);
   }
 
-  const seedOrder = computeSeedOrder(qualified);
+  const apg = Math.max(0, ...groupStandings.map((g) => g.standings.length));
+  if (apg === 0) return [];
+  const allSeeds = collectSeeds(groupStandings, apg);
+  const groupIdByTeam = new Map<string, string>();
+  for (const s of allSeeds) groupIdByTeam.set(s.team_id, s.groupId);
+
   const out: GeneratedKOMatch[] = [];
   let offset = 0;
   for (let bi = 0; bi < sizes.length; bi++) {
     const size = sizes[bi];
-    const chunk = seedOrder.slice(offset, offset + size);
+    const chunkIds = allSeeds.slice(offset, offset + size).map((s) => s.team_id);
     offset += size;
-    if (chunk.length < 2) continue;
+    if (chunkIds.length < 2) continue;
 
-    const seedOrderedIds = chunk.map((q) => q.team_id);
-    const slots = buildBracketSlots(seedOrderedIds);
-    const groupIdByTeam = new Map<string, string>();
-    for (const q of chunk) groupIdByTeam.set(q.team_id, q.groupId);
+    const slots = buildBracketSlots(chunkIds);
     applyAntiRematchSwap(slots, groupIdByTeam);
 
     const bracketCourtList = bracketCourts(courts, bi, sizes.length);

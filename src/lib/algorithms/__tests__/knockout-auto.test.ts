@@ -28,16 +28,20 @@ function makeCourts(n: number): Court[] {
   }));
 }
 
-function standing(team_id: string): GroupStanding["standings"][number] {
+function standing(
+  team_id: string,
+  gf: number = 0,
+  gd: number = 0
+): GroupStanding["standings"][number] {
   return {
     team_id,
     teamName: team_id,
     played: 0,
     wins: 0,
     losses: 0,
-    gf: 0,
+    gf,
     ga: 0,
-    gd: 0,
+    gd,
     pts: 0,
   };
 }
@@ -113,6 +117,109 @@ describe("generateAutoFirstRound", () => {
     expect(matches.length).toBe(4);
     expect(matches.every((m) => m.stage === "quarter_final")).toBe(true);
     expect(matches.every((m) => m.bracket === "A")).toBe(true);
+  });
+
+  it("4 groups × 2 → QF pairings A1-D2, A2-D1, B1-C2, B2-C1", () => {
+    // Spec: with 4 groups (A,B,C,D) and 2 advancing each, the 8-team bracket
+    // must follow standard tennis seeding so top seeds can only meet later:
+    //   pair 0: A1 v D2   (seed 1 v seed 8)
+    //   pair 1: D1 v A2   (seed 4 v seed 5)
+    //   pair 2: B1 v C2   (seed 2 v seed 7)
+    //   pair 3: C1 v B2   (seed 3 v seed 6)
+    const groups: GroupStanding[] = [
+      group("gA", "Grupp A", ["A1", "A2"]),
+      group("gB", "Grupp B", ["B1", "B2"]),
+      group("gC", "Grupp C", ["C1", "C2"]),
+      group("gD", "Grupp D", ["D1", "D2"]),
+    ];
+    const qualified: QualifiedTeam[] = [
+      qual("A1", "gA", 0), qual("A2", "gA", 1),
+      qual("B1", "gB", 0), qual("B2", "gB", 1),
+      qual("C1", "gC", 0), qual("C2", "gC", 1),
+      qual("D1", "gD", 0), qual("D2", "gD", 1),
+    ];
+    const matches = generateAutoFirstRound(groups, qualified, [], TID);
+    const pairs = matches.map((m) => [m.team1_id, m.team2_id].sort());
+    expect(pairs).toEqual([
+      ["A1", "D2"],
+      ["A2", "D1"],
+      ["B1", "C2"],
+      ["B2", "C1"],
+    ]);
+  });
+
+  it("4 groups × 4 → same pairing pattern in A- and B-slutspel", () => {
+    // Top-half (rank 0/1) populates A; bottom-half (rank 2/3) populates B.
+    // Both brackets must follow the standard seed-vs-seed pattern.
+    const groups: GroupStanding[] = [
+      group("gA", "Grupp A", ["A1", "A2", "A3", "A4"]),
+      group("gB", "Grupp B", ["B1", "B2", "B3", "B4"]),
+      group("gC", "Grupp C", ["C1", "C2", "C3", "C4"]),
+      group("gD", "Grupp D", ["D1", "D2", "D3", "D4"]),
+    ];
+    const qualified: QualifiedTeam[] = [];
+    for (const g of ["A", "B", "C", "D"]) {
+      for (let r = 0; r < 4; r++) qualified.push(qual(`${g}${r + 1}`, `g${g}`, r));
+    }
+    const matches = generateAutoFirstRound(groups, qualified, [], TID);
+    const a = matches.filter((m) => m.bracket === "A").map((m) => [m.team1_id, m.team2_id].sort());
+    const b = matches.filter((m) => m.bracket === "B").map((m) => [m.team1_id, m.team2_id].sort());
+    expect(a).toEqual([
+      ["A1", "D2"],
+      ["A2", "D1"],
+      ["B1", "C2"],
+      ["B2", "C1"],
+    ]);
+    expect(b).toEqual([
+      ["A3", "D4"],
+      ["A4", "D3"],
+      ["B3", "C4"],
+      ["B4", "C3"],
+    ]);
+  });
+
+  it("4 groups × 4 → pairings ignore GF/GD (group label drives seed slot)", () => {
+    // Scenario from the real-world tournament: Group 3 winner has the best GF
+    // but must still occupy seed slot 3 (= C1), not slot 1. Group 1 winner
+    // owns slot 1 regardless of GF.
+    const groups: GroupStanding[] = [
+      {
+        groupId: "gA", groupName: "Grupp 1",
+        standings: [standing("A1", 20, 8), standing("A2", 17, 8), standing("A3", 15, 0), standing("A4", 11, -7)],
+      },
+      {
+        groupId: "gB", groupName: "Grupp 2",
+        standings: [standing("B1", 18, 7), standing("B2", 18, 5), standing("B3", 17, 6), standing("B4", 10, -7)],
+      },
+      {
+        groupId: "gC", groupName: "Grupp 3",
+        standings: [standing("C1", 20, 12), standing("C2", 19, 8), standing("C3", 15, -2), standing("C4", 10, -9)],
+      },
+      {
+        groupId: "gD", groupName: "Grupp 4",
+        standings: [standing("D1", 19, 9), standing("D2", 18, 3), standing("D3", 16, 3), standing("D4", 15, -3)],
+      },
+    ];
+    const qualified: QualifiedTeam[] = [];
+    for (const g of ["A", "B", "C", "D"]) {
+      for (let r = 0; r < 4; r++) qualified.push(qual(`${g}${r + 1}`, `g${g}`, r));
+    }
+    const matches = generateAutoFirstRound(groups, qualified, [], TID);
+    const a = matches.filter((m) => m.bracket === "A").map((m) => [m.team1_id, m.team2_id].sort());
+    const b = matches.filter((m) => m.bracket === "B").map((m) => [m.team1_id, m.team2_id].sort());
+    // Even though C1 has higher GF/GD than A1, group label wins — A1 stays seed 1.
+    expect(a).toEqual([
+      ["A1", "D2"],
+      ["A2", "D1"],
+      ["B1", "C2"],
+      ["B2", "C1"],
+    ]);
+    expect(b).toEqual([
+      ["A3", "D4"],
+      ["A4", "D3"],
+      ["B3", "C4"],
+      ["B4", "C3"],
+    ]);
   });
 
   it("splits 16 advancing teams into A/B-slutspel QF brackets", () => {
