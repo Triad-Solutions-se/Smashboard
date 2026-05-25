@@ -24,7 +24,36 @@ import {
   generateGroupMatches,
   totalRoundsFor,
 } from "@/lib/algorithms/gruppspel";
+import { autoBracketSizes } from "@/lib/algorithms/knockout";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
+
+// Per-stage match counts across all auto-generated brackets.
+// Stage labels match the DB: play-in rounds are stored under `quarter_final`,
+// and n=3 SF play-ins are still labeled "Semifinal" for display purposes.
+function playoffMatchCounts(
+  totalAdvancing: number,
+  hasBronze: boolean,
+): { qf: number; sf: number; final: number } {
+  const sizes = autoBracketSizes(totalAdvancing);
+  let qf = 0;
+  let sf = 0;
+  let final = 0;
+  for (const n of sizes) {
+    if (n < 2) continue;
+    if (n === 2) {
+      final += 1;
+    } else if (n <= 4) {
+      sf += n === 3 ? 1 : 2;
+      final += 1;
+    } else {
+      qf += n - 4;
+      sf += 2;
+      final += 1;
+    }
+  }
+  if (hasBronze) final += sizes.length;
+  return { qf, sf, final };
+}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -70,14 +99,10 @@ function estimateTournamentTime(
   let playoffMinutes = 0;
   if (advancesPerGroup > 0) {
     const totalAdvancing = advancesPerGroup * numGroups;
-    // QF: all matches play simultaneously — exact count = teams beyond the 4 SF spots
-    const qfMatches = totalAdvancing > 4 ? totalAdvancing - 4 : 0;
-    if (qfMatches > 0) playoffMinutes += Math.ceil(qfMatches / activeCourts) * matchMinutes;
-    // SF: all 2 matches simultaneously
-    if (totalAdvancing > 2) playoffMinutes += Math.ceil(2 / activeCourts) * matchMinutes;
-    // Final (and bronze runs on another court simultaneously if possible)
-    const finalSlotMatches = hasBronze ? 2 : 1;
-    playoffMinutes += Math.ceil(finalSlotMatches / activeCourts) * matchMinutes;
+    const { qf, sf, final } = playoffMatchCounts(totalAdvancing, hasBronze);
+    if (qf > 0) playoffMinutes += Math.ceil(qf / activeCourts) * matchMinutes;
+    if (sf > 0) playoffMinutes += Math.ceil(sf / activeCourts) * matchMinutes;
+    if (final > 0) playoffMinutes += Math.ceil(final / activeCourts) * matchMinutes;
   }
 
   return { matchMinutes, groupMinutes, playoffMinutes, totalMinutes: groupMinutes + playoffMinutes };
@@ -671,9 +696,8 @@ export function StartView({
             </div>
             {advancesPerGroup > 0 && (() => {
               const total = advancesPerGroup * numGroups;
-              const qfCourts = total > 4 ? total - 4 : 0;
-              const sfCourts = 2;
-              const finalCourts = hasBronze ? 2 : 1;
+              const { qf: qfCourts, sf: sfCourts, final: finalCourts } =
+                playoffMatchCounts(total, hasBronze);
               const court = (n: number) => n === 1 ? "1 bana" : `${n} banor`;
               if (total <= 2) return (
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
