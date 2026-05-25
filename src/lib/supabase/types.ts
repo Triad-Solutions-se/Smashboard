@@ -66,6 +66,7 @@ export type TournamentGroup = {
   tournament_id: string;
   name: string;
   sort_order: number;
+  games_per_match: number | null;
 };
 
 export type TournamentTeam = {

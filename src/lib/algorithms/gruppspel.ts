@@ -40,6 +40,7 @@ export function distributeTeamsToGroups(
     group: {
       name: `Grupp ${idx + 1}`,
       sort_order: idx,
+      games_per_match: null,
     },
     teams: teamsInGroup,
   }));

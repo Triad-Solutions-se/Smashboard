@@ -73,15 +73,35 @@ type TimeEstimate = {
   totalMinutes: number;
 };
 
+// Round-robin matches-per-team for a group of size n. Even n: every team plays
+// every round so n-1 matches; odd n: one bye per team across n rounds → still
+// n-1 matches played per team. Used to balance per-group games_per_match so
+// each player gets roughly the same total games regardless of group size.
+function matchesPerTeamFor(n: number): number {
+  return Math.max(1, n - 1);
+}
+
+// Auto-balance per-group games_per_match so total game count per player stays
+// roughly equal across groups. The biggest group keeps the base value; smaller
+// groups (fewer matches per team) get longer matches.
+function autoBalanceGroupGames(base: number, teamsPerGroup: number[]): number[] {
+  if (teamsPerGroup.length === 0) return [];
+  const mpt = teamsPerGroup.map(matchesPerTeamFor);
+  const maxMpt = Math.max(...mpt);
+  const targetTotal = maxMpt * base;
+  return mpt.map((m) => Math.max(1, Math.round(targetTotal / m)));
+}
+
 function estimateTournamentTime(
   fullTeamCount: number,
   numGroups: number,
   advancesPerGroup: number,
   hasBronze: boolean,
-  gamesPerMatch: number,
+  groupGamesPerMatch: number[],
   activeCourts: number,
 ): TimeEstimate {
-  const matchMinutes = gamesPerMatch * 3 + 5;
+  const baseGames = groupGamesPerMatch[0] ?? 5;
+  const matchMinutes = baseGames * 3 + 5;
   const zero = { matchMinutes, groupMinutes: 0, playoffMinutes: 0, totalMinutes: 0 };
 
   if (fullTeamCount < 2 || numGroups < 1 || activeCourts < 1) return zero;
@@ -92,17 +112,26 @@ function estimateTournamentTime(
   const roundsPerGroup = teamsPerGroup % 2 === 0 ? teamsPerGroup - 1 : teamsPerGroup;
   const matchesPerRoundPerGroup = Math.floor(teamsPerGroup / 2);
   const courtsPerGroup = Math.max(1, Math.floor(activeCourts / numGroups));
-  // How many time-slots per round (courts may force serial play within a group)
   const slotsPerRound = Math.ceil(matchesPerRoundPerGroup / courtsPerGroup);
-  const groupMinutes = roundsPerGroup * slotsPerRound * matchMinutes;
 
+  // Sum each group's wall-clock minutes using its own games_per_match.
+  let groupMinutes = 0;
+  for (let i = 0; i < numGroups; i++) {
+    const g = groupGamesPerMatch[i] ?? baseGames;
+    const perMatch = g * 3 + 5;
+    groupMinutes = Math.max(groupMinutes, roundsPerGroup * slotsPerRound * perMatch);
+  }
+
+  // Playoffs use the longest game length (= the "base" KO target).
+  const playoffGames = Math.max(...groupGamesPerMatch, baseGames);
+  const playoffMinPerMatch = playoffGames * 3 + 5;
   let playoffMinutes = 0;
   if (advancesPerGroup > 0) {
     const totalAdvancing = advancesPerGroup * numGroups;
     const { qf, sf, final } = playoffMatchCounts(totalAdvancing, hasBronze);
-    if (qf > 0) playoffMinutes += Math.ceil(qf / activeCourts) * matchMinutes;
-    if (sf > 0) playoffMinutes += Math.ceil(sf / activeCourts) * matchMinutes;
-    if (final > 0) playoffMinutes += Math.ceil(final / activeCourts) * matchMinutes;
+    if (qf > 0) playoffMinutes += Math.ceil(qf / activeCourts) * playoffMinPerMatch;
+    if (sf > 0) playoffMinutes += Math.ceil(sf / activeCourts) * playoffMinPerMatch;
+    if (final > 0) playoffMinutes += Math.ceil(final / activeCourts) * playoffMinPerMatch;
   }
 
   return { matchMinutes, groupMinutes, playoffMinutes, totalMinutes: groupMinutes + playoffMinutes };
@@ -199,7 +228,13 @@ export function StartView({
   });
 
   const [numGroups, setNumGroups] = useState(2);
-  const [gamesPerMatch, setGamesPerMatch] = useState(5);
+  const [baseGamesPerMatch, setBaseGamesPerMatch] = useState(5);
+  // Per-group games_per_match. Index = group sort_order (0..numGroups-1).
+  // Auto-balanced from baseGamesPerMatch + actual teams-per-group so each
+  // player gets roughly the same total games. Cells the host edits manually
+  // are sticky (tracked in touchedGroups) and survive rebalance passes.
+  const [groupGames, setGroupGames] = useState<number[]>([5, 5]);
+  const [touchedGroups, setTouchedGroups] = useState<Set<number>>(new Set());
   const [advancesPerGroup, setAdvancesPerGroup] = useState(0);
   const [hasBronze, setHasBronze] = useState(false);
   const [lottning, setLottning] = useState<"automatic" | "manual">("automatic");
@@ -326,6 +361,36 @@ export function StartView({
     [suggestedCourtsPerGroup]
   );
 
+  // Rebalance groupGames whenever the base value or per-group team counts
+  // shift. Cells the host has touched stay put; auto-derived cells follow.
+  useEffect(() => {
+    setGroupGames((prev) => {
+      const auto = autoBalanceGroupGames(
+        baseGamesPerMatch,
+        teamsPerGroupArray.length > 0 ? teamsPerGroupArray : Array(numGroups).fill(2)
+      );
+      const next: number[] = [];
+      for (let i = 0; i < numGroups; i++) {
+        if (touchedGroups.has(i) && prev[i] != null) next.push(prev[i]);
+        else next.push(auto[i] ?? baseGamesPerMatch);
+      }
+      return next;
+    });
+  }, [baseGamesPerMatch, teamsPerGroupArray, numGroups, touchedGroups]);
+
+  // Group count changes invalidate manual overrides (group identities shift).
+  useEffect(() => {
+    setTouchedGroups(new Set());
+  }, [numGroups]);
+
+  // The "tournament-level" games_per_match acts as the fallback used by KO
+  // matches and any UI without a group context. Use the max so playoff matches
+  // have at least as much room as the longest group match.
+  const tournamentGamesPerMatch = useMemo(
+    () => (groupGames.length > 0 ? Math.max(...groupGames) : baseGamesPerMatch),
+    [groupGames, baseGamesPerMatch]
+  );
+
   // Use selected courts if any; fall back to the suggested count for estimates
   // before the host has picked courts.
   const activeCourtsForEstimate = selectedCourts.size > 0 ? selectedCourts.size : suggestedTotalCourts;
@@ -334,19 +399,35 @@ export function StartView({
     numGroups,
     advancesPerGroup,
     hasBronze,
-    gamesPerMatch,
+    groupGames,
     Math.max(1, activeCourtsForEstimate),
   );
 
+  const allGamesValid = groupGames.every((g) => g >= 1);
   const canSubmit =
     formatSupported &&
     fullTeamCount >= 2 &&
     allPaired &&
     selectedCourts.size >= 1 &&
     allGroupsHaveCourts &&
-    gamesPerMatch >= 1 &&
+    allGamesValid &&
+    baseGamesPerMatch >= 1 &&
     numGroups >= 1 &&
     fullTeamCount >= numGroups;
+
+  function setGroupGameAt(idx: number, value: number) {
+    setGroupGames((prev) => {
+      const next = [...prev];
+      next[idx] = value;
+      return next;
+    });
+    setTouchedGroups((prev) => {
+      if (prev.has(idx)) return prev;
+      const next = new Set(prev);
+      next.add(idx);
+      return next;
+    });
+  }
 
   function toggleCourt(id: string) {
     setSelectedCourts((prev) => {
@@ -383,12 +464,14 @@ export function StartView({
     try {
       if (lottning === "manual") {
         // Hand off to /draw, which finishes the activation after the host
-        // has dragged each team into a group.
+        // has dragged each team into a group. In manual mode the host hasn't
+        // placed teams yet, so we pass the base value and let /draw rebalance
+        // per-group from the actual placement.
         sessionStorage.setItem(
           `draw-${tournament.id}`,
           JSON.stringify({
             numGroups,
-            gamesPerMatch,
+            gamesPerMatch: baseGamesPerMatch,
             advancesPerGroup,
             hasBronze,
             selectedCourts: [...selectedCourts],
@@ -434,12 +517,15 @@ export function StartView({
       });
       const nonEmpty = buckets.filter((b) => b.length > 0);
 
-      // 3. Insert groups.
+      // 3. Insert groups. Each group carries its own games_per_match so
+      //    score validation can use the right target — smaller groups (fewer
+      //    matches per team) get longer matches to even out total play time.
       const insertedGroups = await insertGroups(
         nonEmpty.map((_, idx) => ({
           tournament_id: tournament.id,
           name: `Grupp ${idx + 1}`,
           sort_order: idx,
+          games_per_match: groupGames[idx] ?? baseGamesPerMatch,
         }))
       );
 
@@ -485,7 +571,7 @@ export function StartView({
       const totalRounds = totalRoundsFor(teamsPerGroup);
       await activateTournament(tournament.id, {
         num_groups: nonEmpty.length,
-        games_per_match: gamesPerMatch,
+        games_per_match: tournamentGamesPerMatch,
         total_rounds: totalRounds,
         formation: "random",
         advances_per_group: advancesPerGroup > 0 ? advancesPerGroup : null,
@@ -602,9 +688,19 @@ export function StartView({
                   {presets.map((p) => {
                     const total = p.groups * p.advances;
                     const active = numGroups === p.groups && advancesPerGroup === p.advances;
+                    // Use auto-balanced games-per-group for the preset's team
+                    // distribution rather than the current selection — that way
+                    // a preset's time estimate reflects the per-group balancing
+                    // it would produce if selected.
+                    const presetBase = Math.floor(fullTeamCount / p.groups);
+                    const presetRem = fullTeamCount % p.groups;
+                    const presetTeams = Array.from({ length: p.groups }, (_, i) =>
+                      presetBase + (i < presetRem ? 1 : 0)
+                    );
+                    const presetGroupGames = autoBalanceGroupGames(baseGamesPerMatch, presetTeams);
                     const presetEst = estimateTournamentTime(
                       fullTeamCount, p.groups, p.advances, hasBronze,
-                      gamesPerMatch, Math.max(1, activeCourtsForEstimate),
+                      presetGroupGames, Math.max(1, activeCourtsForEstimate),
                     );
                     return (
                       <button
@@ -654,21 +750,90 @@ export function StartView({
           </div>
           <div>
             <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
-              Games per match, tiebreak vid {gamesPerMatch - 1}-{gamesPerMatch - 1}
+              Games per match, tiebreak vid {baseGamesPerMatch - 1}-{baseGamesPerMatch - 1}
             </label>
             <input
               type="number"
               min={1}
               max={99}
-              value={gamesPerMatch}
+              value={baseGamesPerMatch}
               onChange={(e) =>
-                setGamesPerMatch(
+                setBaseGamesPerMatch(
                   Math.max(1, parseInt(e.target.value || "1", 10))
                 )
               }
               className="w-32 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
             />
+            {numGroups > 1 && (
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+                Mindre grupper spelar längre matcher så att totaltid per spelare jämnas ut.
+              </p>
+            )}
           </div>
+
+          {numGroups > 1 && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  Games per match per grupp
+                </label>
+                {touchedGroups.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTouchedGroups(new Set());
+                      setGroupGames(
+                        autoBalanceGroupGames(
+                          baseGamesPerMatch,
+                          teamsPerGroupArray.length > 0
+                            ? teamsPerGroupArray
+                            : Array(numGroups).fill(2)
+                        )
+                      );
+                    }}
+                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:underline"
+                  >
+                    Återställ auto-balans
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {Array.from({ length: numGroups }, (_, idx) => {
+                  const teamsHere = teamsPerGroupArray[idx];
+                  const isTouched = touchedGroups.has(idx);
+                  return (
+                    <div
+                      key={idx}
+                      className="rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-2 bg-zinc-50/60 dark:bg-zinc-800/40"
+                    >
+                      <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1 flex items-center justify-between gap-1">
+                        <span>Grupp {idx + 1}</span>
+                        {teamsHere !== undefined && (
+                          <span className="text-zinc-400 dark:text-zinc-500">{teamsHere} lag</span>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={groupGames[idx] ?? baseGamesPerMatch}
+                        onChange={(e) =>
+                          setGroupGameAt(
+                            idx,
+                            Math.max(1, parseInt(e.target.value || "1", 10))
+                          )
+                        }
+                        className="w-full px-2 py-1.5 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 dark:text-zinc-100 text-sm tabular-nums"
+                      />
+                      {!isTouched && teamsHere !== undefined && (
+                        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">auto</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">
