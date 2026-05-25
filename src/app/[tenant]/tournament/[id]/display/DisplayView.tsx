@@ -417,6 +417,7 @@ export function DisplayView({
       <Header
         tenant={tenant}
         tournament={data.tournament}
+        groups={data.groups}
         accent={accent}
         timeLabel={timeLabel}
         completed={computed.completed}
@@ -694,6 +695,7 @@ function KOView({
 function Header({
   tenant,
   tournament,
+  groups,
   accent,
   timeLabel,
   completed,
@@ -703,6 +705,7 @@ function Header({
 }: {
   tenant: Tenant;
   tournament: Tournament;
+  groups: TournamentGroup[];
   accent: string;
   timeLabel: string;
   completed: number;
@@ -710,6 +713,15 @@ function Header({
   darkMode: boolean;
   onToggleDark: () => void;
 }) {
+  const gamesLabel = useMemo(() => {
+    const values = new Set<number>();
+    for (const g of groups) {
+      values.add(g.games_per_match ?? tournament.games_per_match);
+    }
+    if (values.size === 0) return `Mål ${tournament.games_per_match} game`;
+    if (values.size === 1) return `Mål ${[...values][0]} game`;
+    return `Mål varierar per grupp`;
+  }, [groups, tournament.games_per_match]);
   const [playUrl, setPlayUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -745,7 +757,7 @@ function Header({
           <span className={`inline-block w-px ${divider}`} style={{ height: "0.9em" }} aria-hidden="true" />
           <span className={mid}>{FORMAT_LABEL[tournament.format]}</span>
           <span className={`inline-block w-px ${divider}`} style={{ height: "0.9em" }} aria-hidden="true" />
-          <span className={`tabular-nums ${dim}`}>Mål {tournament.games_per_match} game</span>
+          <span className={`tabular-nums ${dim}`}>{gamesLabel}</span>
         </div>
       </div>
 

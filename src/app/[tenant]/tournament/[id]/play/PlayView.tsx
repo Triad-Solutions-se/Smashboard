@@ -320,6 +320,8 @@ function Dashboard({
   }, [myGroupId, data.teams, data.matches, playerMap]);
 
   const myGroup = data.groups.find((g) => g.id === myGroupId);
+  const myGroupGames =
+    myGroup?.games_per_match ?? tournament.games_per_match;
 
   // Current active round within this team's group — used to show the right
   // round number when the team is resting (no current match).
@@ -381,7 +383,7 @@ function Dashboard({
             teamMap={teamMap}
             playerMap={playerMap}
             courtMap={courtMap}
-            gamesPerMatch={tournament.games_per_match}
+            gamesPerMatch={myGroupGames}
             accent={accent}
             isLocked={isLocked}
             blockingTeams={blockingTeams}

@@ -24,6 +24,19 @@ import {
   totalRoundsFor,
 } from "@/lib/algorithms/gruppspel";
 
+// Auto-balance per-group games_per_match from team counts so each player gets
+// roughly the same total games regardless of group size.
+function autoBalanceGroupGamesForDraw(
+  base: number,
+  teamsPerGroup: number[]
+): number[] {
+  if (teamsPerGroup.length === 0) return [];
+  const mpt = teamsPerGroup.map((n) => Math.max(1, n - 1));
+  const maxMpt = Math.max(...mpt);
+  const target = maxMpt * base;
+  return mpt.map((m) => Math.max(1, Math.round(target / m)));
+}
+
 type Stash = {
   numGroups: number;
   gamesPerMatch: number;
@@ -207,12 +220,19 @@ export function DrawView({
       // 2. Materialise groups from the host's drag-and-drop placement.
       const buckets = teamsByGroupIdx;
 
-      // 3. Insert groups.
+      // 3. Insert groups. Auto-balance per-group games_per_match from the
+      //    host's actual placement so smaller groups get longer matches.
+      const placedTeamsPerGroup = buckets.map((b) => b.length);
+      const balancedGroupGames = autoBalanceGroupGamesForDraw(
+        stash.gamesPerMatch,
+        placedTeamsPerGroup
+      );
       const insertedGroups = await insertGroups(
         buckets.map((_, idx) => ({
           tournament_id: tournament.id,
           name: `Grupp ${idx + 1}`,
           sort_order: idx,
+          games_per_match: balancedGroupGames[idx] ?? stash.gamesPerMatch,
         }))
       );
 
@@ -259,9 +279,14 @@ export function DrawView({
       // 6. Activate tournament.
       const teamsPerGroupArr = buckets.map((b) => b.length);
       const totalRounds = totalRoundsFor(teamsPerGroupArr);
+      // Use the longest per-group target as the tournament-level fallback
+      // (drives KO match validation).
+      const tournamentGamesPerMatch = balancedGroupGames.length > 0
+        ? Math.max(...balancedGroupGames)
+        : stash.gamesPerMatch;
       await activateTournament(tournament.id, {
         num_groups: buckets.length,
-        games_per_match: stash.gamesPerMatch,
+        games_per_match: tournamentGamesPerMatch,
         total_rounds: totalRounds,
         formation: "manual",
         advances_per_group: stash.advancesPerGroup > 0 ? stash.advancesPerGroup : null,

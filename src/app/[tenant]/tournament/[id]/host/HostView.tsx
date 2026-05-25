@@ -245,6 +245,18 @@ function HostInner({
   const { tournament, groups, teams, matches, players, courts, rests } = data;
   const accent = tenant.primary_color || "#10b981";
 
+  // Header label: show single value when all groups match, otherwise "varierar"
+  // so the host knows there's per-group config in play.
+  const gamesLabel = useMemo(() => {
+    const values = new Set<number>();
+    for (const g of groups) {
+      values.add(g.games_per_match ?? tournament.games_per_match);
+    }
+    if (values.size === 0) return `Mål ${tournament.games_per_match} game`;
+    if (values.size === 1) return `Mål ${[...values][0]} game`;
+    return `Mål varierar per grupp`;
+  }, [groups, tournament.games_per_match]);
+
   type PaidKey = `${string}-${1 | 2}`;
   const [paidKeys, setPaidKeys] = useState<Set<PaidKey>>(() => {
     const s = new Set<PaidKey>();
@@ -1003,7 +1015,7 @@ function HostInner({
             <>
               <h1 className="text-xl font-semibold leading-tight">{tournament.name}</h1>
               <p className="text-xs text-zinc-500">
-                {tenant.name} · Mål {tournament.games_per_match} game
+                {tenant.name} · {gamesLabel}
               </p>
             </>
           )}
@@ -1277,7 +1289,7 @@ function HostInner({
                     matchUiStates={matchUiStates}
                     restingTeamIds={restingTeamIdsThisRound}
                     advancesPerGroup={advancesPerGroup}
-                    gamesPerMatch={tournament.games_per_match}
+                    gamesPerMatch={g.games_per_match ?? tournament.games_per_match}
                     onSave={saveScore}
                     busyId={busy}
                   />
