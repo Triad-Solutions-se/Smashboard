@@ -530,6 +530,35 @@ function HostInner({
     });
   }, [groups, teams, groupMatches, playerMap, advancesPerGroup]);
 
+  // Per-advancing-team → bracket letter. Mirrors the assignment used by the
+  // playoff starter panel so the group standings table shows the same A/B/…
+  // that each team will land in (e.g. with 16 advancing into 2 brackets of 8,
+  // positions 1–2 → A and 3–4 → B, not 1→A/2→B/3→C/4→D).
+  const bracketByTeamId = useMemo(() => {
+    const out = new Map<string, string>();
+    if (groupStandings.length === 0) return out;
+    if (tournament.bracket_mode === "split") {
+      for (const g of groupStandings) {
+        g.standings.forEach((s, rank) => {
+          out.set(s.team_id, bracketLetter(rank));
+        });
+      }
+      return out;
+    }
+    if (tournament.formation === "seeded") {
+      for (const g of groupStandings) {
+        for (const s of g.standings) out.set(s.team_id, "A");
+      }
+      return out;
+    }
+    const qualified = buildQualifiedTeams(groupStandings, teamMap);
+    const seeds = autoBracketSeedOrders(groupStandings, qualified);
+    for (const [letter, ids] of seeds) {
+      for (const id of ids) out.set(id, letter);
+    }
+    return out;
+  }, [groupStandings, tournament.bracket_mode, tournament.formation, teamMap]);
+
   const totalAdvancingKO = useMemo(
     () => groupStandings.reduce((s, g) => s + g.standings.length, 0),
     [groupStandings]
@@ -1288,7 +1317,7 @@ function HostInner({
                     courtMap={courtMap}
                     matchUiStates={matchUiStates}
                     restingTeamIds={restingTeamIdsThisRound}
-                    advancesPerGroup={advancesPerGroup}
+                    bracketByTeamId={bracketByTeamId}
                     gamesPerMatch={g.games_per_match ?? tournament.games_per_match}
                     onSave={saveScore}
                     busyId={busy}
@@ -1496,11 +1525,14 @@ function PlayoffPanel({
 
   const recommendedCount = previewMatchups.length;
 
-  const [selectedCourts, setSelectedCourts] = useState<Set<string>>(
-    () => new Set(courts.slice(0, Math.max(1, recommendedCount)).map((c) => c.id))
+  // Courts were already chosen during tournament setup — auto-allocate the
+  // first N courts (one per playoff match) so the host doesn't have to pick
+  // them again. Fewer than recommended is fine; matches without a court are
+  // queued and assigned as courts free up.
+  const chosenCourts = useMemo(
+    () => courts.slice(0, Math.max(1, recommendedCount)),
+    [courts, recommendedCount]
   );
-
-  const chosenCourts = courts.filter((c) => selectedCourts.has(c.id));
   const canGenerate = chosenCourts.length > 0 && previewMatchups.length > 0;
 
   async function generate() {
@@ -1674,51 +1706,6 @@ function PlayoffPanel({
           })}
         </div>
       )}
-
-      {/* Court selection */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <p className="text-xs font-medium text-zinc-500">Banor för slutspelsrundan:</p>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-400">
-              Rekommenderat: {recommendedCount} {recommendedCount === 1 ? "bana" : "banor"} (en per match)
-            </span>
-            {selectedCourts.size !== recommendedCount && (
-              <button
-                onClick={() =>
-                  setSelectedCourts(new Set(courts.slice(0, recommendedCount).map((c) => c.id)))
-                }
-                className="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
-              >
-                Återställ
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {courts.map((c) => {
-            const checked = selectedCourts.has(c.id);
-            return (
-              <label key={c.id} className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => {
-                    setSelectedCourts((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(c.id)) next.delete(c.id);
-                      else next.add(c.id);
-                      return next;
-                    });
-                  }}
-                  className="rounded"
-                />
-                {c.name}
-              </label>
-            );
-          })}
-        </div>
-      </div>
 
       <button
         onClick={generate}
@@ -2341,11 +2328,6 @@ function KOResultsPanel({
   );
 }
 
-function slutspelLabel(position: number, advancesPerGroup: number): string | null {
-  if (advancesPerGroup <= 0 || position > advancesPerGroup) return null;
-  return `${String.fromCharCode(64 + position)}-slutspel`;
-}
-
 function ScoreStepper({
   value,
   onChange,
@@ -2700,7 +2682,7 @@ function GroupColumn({
   courtMap,
   matchUiStates,
   restingTeamIds,
-  advancesPerGroup,
+  bracketByTeamId,
   gamesPerMatch,
   onSave,
   busyId,
@@ -2714,7 +2696,7 @@ function GroupColumn({
   courtMap: Map<string, Court>;
   matchUiStates: Map<string, { state: MatchUiStateKey; reason: string | null }>;
   restingTeamIds: string[];
-  advancesPerGroup: number;
+  bracketByTeamId: Map<string, string>;
   gamesPerMatch: number;
   onSave: (m: TournamentMatch, s1: number, s2: number) => Promise<void>;
   busyId: string | null;
@@ -2765,8 +2747,14 @@ function GroupColumn({
     [groupMatches]
   );
 
+  const hasMultipleBrackets = useMemo(() => {
+    const letters = new Set<string>();
+    for (const [, letter] of bracketByTeamId) letters.add(letter);
+    return letters.size > 1;
+  }, [bracketByTeamId]);
+
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col min-w-0">
+    <div className={`rounded-lg border border-zinc-200 dark:border-zinc-800 ${palette.panel} overflow-hidden flex flex-col min-w-0`}>
       <div className={`px-4 py-2 border-b font-semibold text-sm ${palette.bar} flex items-center justify-between gap-2`}>
         <span>{group.name}</span>
         {groupComplete && (
@@ -2823,12 +2811,15 @@ function GroupColumn({
           <tbody>
             {standings.map((s, i) => {
               const t = teamMap.get(s.team_id);
-              const slutspel = slutspelLabel(i + 1, advancesPerGroup);
+              const bracketLetterForTeam = bracketByTeamId.get(s.team_id) ?? null;
+              const slutspelTitle = bracketLetterForTeam
+                ? `Går vidare till ${bracketLabelAuto(bracketLetterForTeam, hasMultipleBrackets)}`
+                : null;
               const isResting = !groupComplete && restingSet.has(s.team_id);
               return (
                 <tr
                   key={s.team_id}
-                  className={`border-t border-zinc-100 dark:border-zinc-800 ${slutspel ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
+                  className={`border-t border-zinc-100 dark:border-zinc-800 ${bracketLetterForTeam ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
                 >
                   <td className="px-2 py-1 text-center text-zinc-500">
                     {i + 1}
@@ -2859,12 +2850,12 @@ function GroupColumn({
                           Vilar
                         </span>
                       )}
-                      {slutspel && (
+                      {bracketLetterForTeam && (
                         <span
                           className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 px-1 py-px rounded bg-emerald-100/60 dark:bg-emerald-950/40"
-                          title={`Går vidare till ${slutspel}`}
+                          title={slutspelTitle ?? undefined}
                         >
-                          {slutspel.replace("-slutspel", "")}
+                          {bracketLetterForTeam}
                         </span>
                       )}
                     </div>
