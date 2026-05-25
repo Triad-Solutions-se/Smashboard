@@ -40,6 +40,9 @@ import {
   collectSeeds,
   bracketLabelAuto,
   bracketLetter,
+  getKOWinnerId,
+  getKOLoserId,
+  KOTieError,
   type GroupStanding,
   type QualifiedTeam,
 } from "@/lib/algorithms/knockout";
@@ -895,8 +898,10 @@ function HostInner({
           const m2 = roundMatches[n - 1 - i];
           if (m1.status !== "completed" || m2.status !== "completed") continue;
 
-          const w1 = (m1.score_team1 ?? 0) > (m1.score_team2 ?? 0) ? m1.team1_id : m1.team2_id;
-          const w2 = (m2.score_team1 ?? 0) > (m2.score_team2 ?? 0) ? m2.team1_id : m2.team2_id;
+          const w1 = getKOWinnerId(m1);
+          const w2 = getKOWinnerId(m2);
+          if (w1 == null) throw new KOTieError(m1);
+          if (w2 == null) throw new KOTieError(m2);
 
           const alreadyExists =
             nextRoundMatches.some(
@@ -931,8 +936,10 @@ function HostInner({
           });
 
           if (t.has_bronze && stage === "final" && n === 2) {
-            const l1 = (m1.score_team1 ?? 0) > (m1.score_team2 ?? 0) ? m1.team2_id : m1.team1_id;
-            const l2 = (m2.score_team1 ?? 0) > (m2.score_team2 ?? 0) ? m2.team2_id : m2.team1_id;
+            const l1 = getKOLoserId(m1);
+            const l2 = getKOLoserId(m2);
+            if (l1 == null) throw new KOTieError(m1);
+            if (l2 == null) throw new KOTieError(m2);
             const bronzeCourt =
               c.find((cc) => cc.id === m2.court_id) ?? c[Math.floor(c.length / 2)] ?? c[0] ?? null;
             newMatches.push({
@@ -961,6 +968,7 @@ function HostInner({
 
   const [completing, setCompleting] = useState(false);
   const [completeErr, setCompleteErr] = useState<string | null>(null);
+  const [koTieErr, setKOTieErr] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1012,12 +1020,21 @@ function HostInner({
     s2: number
   ): Promise<void> {
     setBusy(match.id);
+    setKOTieErr(null);
     try {
       await updateMatchScore(match.id, s1, s2, "completed");
       const loaded = await reload();
       if (match.stage !== "group" && loaded) {
-        const generated = await autoAdvanceKO(loaded);
-        if (generated) await reload();
+        try {
+          const generated = await autoAdvanceKO(loaded);
+          if (generated) await reload();
+        } catch (e) {
+          if (e instanceof KOTieError) {
+            setKOTieErr(e.message);
+          } else {
+            throw e;
+          }
+        }
       }
     } finally {
       setBusy(null);
@@ -1225,6 +1242,21 @@ function HostInner({
           )}
         </div>
       </header>
+
+      {koTieErr && (
+        <div className="border-b border-amber-200 bg-amber-50 dark:bg-amber-950/30 px-5 py-3 flex items-center justify-between gap-3">
+          <div className="text-sm text-amber-900 dark:text-amber-200">
+            <span className="font-semibold">Slutspelet kan inte avancera:</span>{" "}
+            {koTieErr} Justera resultatet så fortsätter slutspelet automatiskt.
+          </div>
+          <button
+            onClick={() => setKOTieErr(null)}
+            className="shrink-0 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:underline"
+          >
+            Stäng
+          </button>
+        </div>
+      )}
 
       {tournament.status === "completed" && (
         <div className="border-b border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 px-5 py-3 flex items-center justify-between gap-3">

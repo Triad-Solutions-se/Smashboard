@@ -367,6 +367,35 @@ function buildQFMatches(
   return matches;
 }
 
+// Resolves a KO match to its winner/loser. Returns null when the result is
+// unusable for advancement: missing scores or a tie. A KO match cannot end in
+// a draw — the host must adjust the score before the bracket can progress.
+export function getKOWinnerId(m: TournamentMatch): string | null {
+  if (m.score_team1 == null || m.score_team2 == null) return null;
+  if (m.score_team1 === m.score_team2) return null;
+  return m.score_team1 > m.score_team2 ? m.team1_id : m.team2_id;
+}
+
+export function getKOLoserId(m: TournamentMatch): string | null {
+  if (m.score_team1 == null || m.score_team2 == null) return null;
+  if (m.score_team1 === m.score_team2) return null;
+  return m.score_team1 > m.score_team2 ? m.team2_id : m.team1_id;
+}
+
+// Thrown when generateNextKORound is called with at least one tied or
+// unscored KO match. Callers should catch this and surface it to the host so
+// the score can be corrected before retrying.
+export class KOTieError extends Error {
+  constructor(public readonly match: TournamentMatch) {
+    const detail =
+      match.score_team1 == null || match.score_team2 == null
+        ? "saknar resultat"
+        : `lika resultat ${match.score_team1}–${match.score_team2}`;
+    super(`Slutspelsmatchen kan inte avgöras: ${detail}`);
+    this.name = "KOTieError";
+  }
+}
+
 // Given completed KO matches from the current round of a SINGLE bracket and
 // any teams that had byes (advanced without playing this round), generate the
 // next round. The new matches inherit the bracket from `completedMatches`.
@@ -374,6 +403,9 @@ function buildQFMatches(
 // The host is responsible for partitioning matches by bracket and calling this
 // once per bracket; mixing brackets in the same call will tag the new matches
 // with the first bracket seen.
+//
+// Throws KOTieError if any completed match is tied or missing a score — the
+// bracket cannot advance silently past an ambiguous result.
 export function generateNextKORound(
   completedMatches: TournamentMatch[],
   byeTeamIds: string[],
@@ -384,14 +416,15 @@ export function generateNextKORound(
   if (completedMatches.length === 0 && byeTeamIds.length === 0) return [];
   const bracket = completedMatches[0]?.bracket ?? null;
 
-  const winners = completedMatches.map((m) => {
-    const t1Wins = (m.score_team1 ?? 0) > (m.score_team2 ?? 0);
-    return t1Wins ? m.team1_id : m.team2_id;
-  });
-  const losers = completedMatches.map((m) => {
-    const t1Wins = (m.score_team1 ?? 0) > (m.score_team2 ?? 0);
-    return t1Wins ? m.team2_id : m.team1_id;
-  });
+  const winners: string[] = [];
+  const losers: string[] = [];
+  for (const m of completedMatches) {
+    const w = getKOWinnerId(m);
+    const l = getKOLoserId(m);
+    if (w == null || l == null) throw new KOTieError(m);
+    winners.push(w);
+    losers.push(l);
+  }
 
   // Bye teams advanced as top seeds; winners are seeded below them.
   const entrants = [...byeTeamIds, ...winners];
