@@ -104,8 +104,6 @@ export function generateGroupMatches(
     const teams = teamsByGroup.get(gid)!;
     const rounds = roundRobinPairs(teams.length);
     return rounds.map(({ pairs, restingIdx }) => ({
-      gid,
-      tournamentId: teams[0]?.tournament_id ?? "",
       pairs: pairs.map(([i, j]) => ({
         group_id: gid,
         team1_id: teams[i].id,

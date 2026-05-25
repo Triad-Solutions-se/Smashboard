@@ -85,6 +85,9 @@ export function computeStandings(
   for (const m of matches) {
     if (m.status !== "completed") continue;
     if (m.score_team1 == null || m.score_team2 == null) continue;
+    // 0-0 has no domain meaning (no walkover feature). Treat as not played
+    // so an accidental complete-without-score doesn't inflate matches-played.
+    if (m.score_team1 === 0 && m.score_team2 === 0) continue;
     const t1 = map.get(m.team1_id);
     const t2 = map.get(m.team2_id);
     if (!t1 || !t2) continue;

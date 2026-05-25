@@ -36,13 +36,10 @@ function standing(
   return {
     team_id,
     teamName: team_id,
-    played: 0,
-    wins: 0,
-    losses: 0,
+    mp: 0,
     gf,
     ga: 0,
     gd,
-    pts: 0,
   };
 }
 
