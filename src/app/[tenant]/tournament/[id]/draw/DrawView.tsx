@@ -335,35 +335,18 @@ export function DrawView({
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <header className="border-b border-zinc-200 dark:border-zinc-700 px-6 py-5 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <Link
-            href={`/${tenant.slug}/tournament/${tournament.id}/start`}
-            className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-          >
-            ← Tillbaka till start
-          </Link>
-          <h1 className="text-2xl font-semibold mt-1">Lotta lag</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Dra varje lag till en grupp. {teamsPerGroup.reduce((a, b) => a + b, 0)} av{" "}
-            {effectiveTeams.length} lag fördelade.
-          </p>
-        </div>
-        <button
-          onClick={confirm}
-          disabled={!canSubmit}
-          className="px-5 py-2.5 rounded-md text-white text-sm font-semibold disabled:opacity-50"
-          style={{ backgroundColor: accent }}
-          title={
-            !allAssigned
-              ? "Fördela alla lag först"
-              : !everyGroupHasTeams
-                ? "Varje grupp behöver minst ett lag"
-                : "Starta sessionen"
-          }
+      <header className="border-b border-zinc-200 dark:border-zinc-700 px-6 py-5">
+        <Link
+          href={`/${tenant.slug}/tournament/${tournament.id}/start`}
+          className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
         >
-          {submitting ? "Startar…" : "Starta session →"}
-        </button>
+          ← Tillbaka till start
+        </Link>
+        <h1 className="text-2xl font-semibold mt-1">Lotta lag</h1>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Dra varje lag till en grupp. {teamsPerGroup.reduce((a, b) => a + b, 0)} av{" "}
+          {effectiveTeams.length} lag fördelade.
+        </p>
       </header>
 
       {err && (
@@ -372,7 +355,7 @@ export function DrawView({
         </div>
       )}
 
-      <main className="p-6 space-y-5">
+      <main className="p-6 pb-28 space-y-5">
         <PoolZone
           teams={unassignedTeams}
           dragOver={dragOverZone === "pool"}
@@ -439,6 +422,24 @@ export function DrawView({
           })}
         </div>
       </main>
+
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={confirm}
+          disabled={!canSubmit}
+          className="px-6 py-3 rounded-full text-white text-sm font-semibold shadow-lg shadow-black/20 disabled:opacity-50 disabled:cursor-not-allowed transition-transform active:scale-95"
+          style={{ backgroundColor: accent }}
+          title={
+            !allAssigned
+              ? "Fördela alla lag först"
+              : !everyGroupHasTeams
+                ? "Varje grupp behöver minst ett lag"
+                : "Starta sessionen"
+          }
+        >
+          {submitting ? "Startar…" : "Starta session →"}
+        </button>
+      </div>
     </div>
   );
 }

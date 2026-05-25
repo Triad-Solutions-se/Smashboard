@@ -614,7 +614,7 @@ export function StartView({
         </div>
       )}
 
-      <main className="p-6 max-w-7xl mx-auto">
+      <main className="p-6 pb-28 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="space-y-5">
         {soloTeams.length > 0 && (
@@ -1117,21 +1117,22 @@ export function StartView({
             )}
         </section>
 
-        <div className="flex justify-end pt-2">
-          <button
-            onClick={submit}
-            disabled={!canSubmit || submitting}
-            className="px-6 py-2.5 rounded-md text-white text-sm font-semibold disabled:opacity-50"
-            style={{ backgroundColor: accent }}
-          >
-            {submitting
-              ? lottning === "manual" ? "Öppnar lottning…" : "Startar..."
-              : lottning === "manual" ? "Lotta lag →" : "Starta session →"}
-          </button>
-        </div>
         </div>{/* end right column */}
         </div>{/* end grid */}
       </main>
+
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={submit}
+          disabled={!canSubmit || submitting}
+          className="px-6 py-3 rounded-full text-white text-sm font-semibold shadow-lg shadow-black/20 disabled:opacity-50 disabled:cursor-not-allowed transition-transform active:scale-95"
+          style={{ backgroundColor: accent }}
+        >
+          {submitting
+            ? lottning === "manual" ? "Öppnar lottning…" : "Startar..."
+            : lottning === "manual" ? "Lotta lag →" : "Starta session →"}
+        </button>
+      </div>
     </div>
   );
 }

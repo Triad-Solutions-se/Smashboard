@@ -342,32 +342,17 @@ export function PlanView({
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <header className="border-b border-zinc-200 dark:border-zinc-700 px-6 py-5 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <Link
-            href={`/${tenant.slug}`}
-            className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-          >
-            ← Sessioner
-          </Link>
-          <h1 className="text-2xl font-semibold mt-1">Planera session</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Utkast — sparas automatiskt. Du kan ändra fram till start.
-          </p>
-        </div>
-        <button
-          onClick={goStart}
-          disabled={teams.length < 2}
-          className="px-5 py-2.5 rounded-md text-white text-sm font-semibold disabled:opacity-50"
-          style={{ backgroundColor: accent }}
-          title={
-            teams.length < 2
-              ? "Minst 2 lag/spelare krävs"
-              : "Sätt upp banor, regler och starta"
-          }
+      <header className="border-b border-zinc-200 dark:border-zinc-700 px-6 py-5">
+        <Link
+          href={`/${tenant.slug}`}
+          className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
         >
-          Starta session →
-        </button>
+          ← Sessioner
+        </Link>
+        <h1 className="text-2xl font-semibold mt-1">Planera session</h1>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Utkast — sparas automatiskt. Du kan ändra fram till start.
+        </p>
       </header>
 
       {err && (
@@ -382,7 +367,7 @@ export function PlanView({
         </div>
       )}
 
-      <main className="p-6 grid lg:grid-cols-3 gap-6">
+      <main className="p-6 pb-28 grid lg:grid-cols-3 gap-6">
         <section className="lg:col-span-1 space-y-4">
           <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">
             <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Detaljer</h2>
@@ -706,6 +691,22 @@ export function PlanView({
           )}
         </section>
       </main>
+
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={goStart}
+          disabled={teams.length < 2}
+          className="px-6 py-3 rounded-full text-white text-sm font-semibold shadow-lg shadow-black/20 disabled:opacity-50 disabled:cursor-not-allowed transition-transform active:scale-95"
+          style={{ backgroundColor: accent }}
+          title={
+            teams.length < 2
+              ? "Minst 2 lag/spelare krävs"
+              : "Sätt upp banor, regler och starta"
+          }
+        >
+          Starta session →
+        </button>
+      </div>
     </div>
   );
 }

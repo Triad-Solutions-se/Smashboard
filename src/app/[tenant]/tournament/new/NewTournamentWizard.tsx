@@ -68,7 +68,7 @@ export function NewTournamentWizard({ tenant }: { tenant: Tenant }) {
         </div>
       )}
 
-      <main className="p-6 max-w-xl">
+      <main className="p-6 max-w-xl pb-28">
         <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
           Planera nu — du kan ändra spelare och inställningar fram till att
           sessionen startas.
@@ -158,18 +158,19 @@ export function NewTournamentWizard({ tenant }: { tenant: Tenant }) {
             )}
           </div>
 
-          <div className="flex justify-end pt-3">
-            <button
-              onClick={submit}
-              disabled={!canSubmit || submitting}
-              className="px-5 py-2 rounded-md text-white text-sm font-semibold disabled:opacity-50"
-              style={{ backgroundColor: accent }}
-            >
-              {submitting ? "Skapar..." : "Skapa & planera →"}
-            </button>
-          </div>
         </div>
       </main>
+
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={submit}
+          disabled={!canSubmit || submitting}
+          className="px-6 py-3 rounded-full text-white text-sm font-semibold shadow-lg shadow-black/20 disabled:opacity-50 disabled:cursor-not-allowed transition-transform active:scale-95"
+          style={{ backgroundColor: accent }}
+        >
+          {submitting ? "Skapar..." : "Skapa & planera →"}
+        </button>
+      </div>
     </div>
   );
 }
