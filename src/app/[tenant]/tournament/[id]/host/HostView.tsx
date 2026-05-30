@@ -1303,11 +1303,12 @@ function HostInner({
         <WinnerTable
           tenant={tenant}
           tournament={tournament}
-          winners={winners}
+          winners={winners.slice(0, 1)}
           teamMap={teamMap}
           playerMap={playerMap}
           hasMultipleBrackets={hasMultipleBrackets}
           accent={accent}
+          isFullscreen={isFullscreen}
         />
       )}
 
@@ -1323,7 +1324,7 @@ function HostInner({
         />
       )}
 
-      <main className="px-5 py-4">
+      <main className={`px-5 py-4 ${isFullscreen && tournamentPhase === "done" ? "hidden" : ""}`}>
         {!hasKO ? (
           <>
             {groups.length === 0 ? (
@@ -1360,14 +1361,7 @@ function HostInner({
           </>
         ) : (
           <div className="space-y-4">
-            {tournamentPhase === "done" ? (
-              <RestPositionsPanel
-                koMatches={koMatches}
-                teamMap={teamMap}
-                playerMap={playerMap}
-                hasMultipleBrackets={hasMultipleBrackets}
-              />
-            ) : (
+            {tournamentPhase !== "done" && (
               <KOResultsPanel
                 koMatches={koMatches}
                 teamMap={teamMap}
@@ -1825,9 +1819,12 @@ function MatchCard({
   const aFilled = !Number.isNaN(a);
   const bFilled = !Number.isNaN(b);
   const bothFilled = aFilled && bFilled;
+  const userTouched = s1 !== "" || s2 !== "";
 
   let validationMsg: string | null = null;
-  if (aFilled && (a < 0 || a > gamesPerMatch)) {
+  if (!userTouched) {
+    validationMsg = null;
+  } else if (aFilled && (a < 0 || a > gamesPerMatch)) {
     validationMsg = `Max är ${gamesPerMatch} game.`;
   } else if (bFilled && (b < 0 || b > gamesPerMatch)) {
     validationMsg = `Max är ${gamesPerMatch} game.`;
@@ -1954,6 +1951,7 @@ function WinnerTable({
   playerMap,
   hasMultipleBrackets,
   accent,
+  isFullscreen,
 }: {
   tenant: Tenant;
   tournament: Tournament;
@@ -1962,6 +1960,7 @@ function WinnerTable({
   playerMap: Map<string, Player>;
   hasMultipleBrackets: boolean;
   accent: string;
+  isFullscreen: boolean;
 }) {
   const nameOf = (id: string | null): string | null => {
     if (!id) return null;
@@ -1986,7 +1985,11 @@ function WinnerTable({
   })();
 
   return (
-    <div className="relative border-b border-amber-200/40 dark:border-zinc-800 bg-gradient-to-b from-amber-50/90 via-white to-amber-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
+    <div
+      className={`relative border-b border-amber-200/40 dark:border-zinc-800 bg-gradient-to-b from-amber-50/90 via-white to-amber-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 ${
+        isFullscreen ? "min-h-[calc(100vh-4rem)] flex flex-col justify-center" : ""
+      }`}
+    >
       <div
         className="pointer-events-none absolute inset-x-0 -top-[8rem] sm:-top-[10rem] h-[34rem] bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.34),transparent_60%)] dark:bg-[radial-gradient(ellipse_at_top,rgba(251,191,36,0.24),transparent_65%)]"
         aria-hidden
@@ -1996,7 +1999,7 @@ function WinnerTable({
         aria-hidden
       />
 
-      <div className="relative px-6 pt-10 pb-10 max-w-4xl mx-auto">
+      <div className="relative px-6 pt-10 pb-10 max-w-4xl mx-auto w-full">
         <div className="flex items-center justify-center gap-6 sm:gap-10 mb-6">
           {tenant.logo_url && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -2142,119 +2145,6 @@ function WinnerTable({
           })}
         </div>
 
-      </div>
-    </div>
-  );
-}
-
-function RestPositionsPanel({
-  koMatches,
-  teamMap,
-  playerMap,
-  hasMultipleBrackets,
-}: {
-  koMatches: TournamentMatch[];
-  teamMap: Map<string, TournamentTeam>;
-  playerMap: Map<string, Player>;
-  hasMultipleBrackets: boolean;
-}) {
-  type RestEntry = { rank: string; names: string[] };
-
-  const loserOf = (m: TournamentMatch): string | null => {
-    const t1Wins = (m.score_team1 ?? 0) > (m.score_team2 ?? 0);
-    const id = t1Wins ? m.team2_id : m.team1_id;
-    const t = teamMap.get(id);
-    return t ? shortTeamName(t, playerMap) : null;
-  };
-
-  const byBracket = new Map<string, TournamentMatch[]>();
-  for (const m of koMatches) {
-    const b = m.bracket ?? "A";
-    const arr = byBracket.get(b) ?? [];
-    arr.push(m);
-    byBracket.set(b, arr);
-  }
-  const sortedBrackets = [...byBracket.keys()].sort();
-
-  const bracketEntries = sortedBrackets.map((bracket) => {
-    const matches = byBracket.get(bracket) ?? [];
-    const bronze = matches.find(
-      (m) => m.stage === "bronze" && m.status === "completed"
-    );
-    const qfs = matches.filter(
-      (m) => m.stage === "quarter_final" && m.status === "completed"
-    );
-
-    const entries: RestEntry[] = [];
-
-    if (bronze) {
-      const name = loserOf(bronze);
-      if (name) entries.push({ rank: "4", names: [name] });
-    }
-
-    const qfLosers = qfs
-      .map((m) => loserOf(m))
-      .filter((n): n is string => Boolean(n));
-    if (qfLosers.length > 0) {
-      const start = 5;
-      const end = start + qfLosers.length - 1;
-      entries.push({
-        rank: qfLosers.length === 1 ? String(start) : `${start}–${end}`,
-        names: qfLosers,
-      });
-    }
-
-    return { bracket, entries };
-  });
-
-  if (bracketEntries.every((b) => b.entries.length === 0)) return null;
-
-  return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 font-medium text-sm text-zinc-700 dark:text-zinc-300">
-        Övriga placeringar
-      </div>
-      <div
-        className="grid"
-        style={{
-          gridTemplateColumns: `repeat(${sortedBrackets.length}, minmax(0, 1fr))`,
-        }}
-      >
-        {bracketEntries.map(({ bracket, entries }) => (
-          <div
-            key={bracket}
-            className="border-r last:border-r-0 border-zinc-100 dark:border-zinc-800"
-          >
-            {sortedBrackets.length > 1 && (
-              <div className="px-3 py-1.5 text-xs font-semibold border-b border-zinc-100 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200">
-                {bracketLabelAuto(bracket, hasMultipleBrackets)}
-              </div>
-            )}
-            {entries.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-zinc-500">–</div>
-            ) : (
-              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                {entries.map((e) => (
-                  <div key={e.rank} className="px-3 py-2 flex items-start gap-3">
-                    <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-1.5 rounded-md text-[11px] font-bold tabular-nums bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
-                      {e.rank}
-                    </span>
-                    <ul className="flex-1 min-w-0 space-y-0.5">
-                      {e.names.map((n, i) => (
-                        <li
-                          key={i}
-                          className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate"
-                        >
-                          {n}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
       </div>
     </div>
   );
