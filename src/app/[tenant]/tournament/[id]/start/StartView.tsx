@@ -237,7 +237,7 @@ export function StartView({
   const [touchedGroups, setTouchedGroups] = useState<Set<number>>(new Set());
   const [advancesPerGroup, setAdvancesPerGroup] = useState(0);
   const [hasBronze, setHasBronze] = useState(false);
-  const [lottning, setLottning] = useState<"automatic" | "manual">("automatic");
+  const [lottning, setLottning] = useState<"automatic" | "manual">("manual");
   const [selectedCourts, setSelectedCourts] = useState<Set<string>>(
     new Set<string>()
   );
@@ -797,7 +797,10 @@ export function StartView({
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div
+                className="grid gap-2"
+                style={{ gridTemplateColumns: `repeat(${numGroups}, minmax(0, 1fr))` }}
+              >
                 {Array.from({ length: numGroups }, (_, idx) => {
                   const teamsHere = teamsPerGroupArray[idx];
                   const isTouched = touchedGroups.has(idx);
@@ -969,8 +972,11 @@ export function StartView({
           )}
         </section>
 
+        </div>{/* end left column */}
+
+        <div className="space-y-5">
         {fullTeamCount >= 2 && estimate.totalMinutes > 0 && (
-          <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+          <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 lg:sticky lg:top-20 lg:z-10">
             <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Tidsuppskattning</h2>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div className="text-zinc-500 dark:text-zinc-400">Per match</div>
@@ -998,39 +1004,6 @@ export function StartView({
             )}
           </section>
         )}
-
-        </div>{/* end left column */}
-
-        <div className="space-y-5">
-        <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
-          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Lottning</h2>
-          <div className="grid grid-cols-2 gap-2">
-            {([
-              { value: "automatic", label: "Automatisk", desc: "Slumpa lag i grupperna" },
-              { value: "manual", label: "Manuell", desc: "Dra lag till valfri grupp" },
-            ] as const).map((opt) => {
-              const active = lottning === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setLottning(opt.value)}
-                  aria-pressed={active}
-                  className="text-left rounded-lg border px-3 py-2 transition"
-                  style={active
-                    ? { borderColor: accent, backgroundColor: `${accent}10` }
-                    : { borderColor: "#e4e4e7" }
-                  }
-                >
-                  <div className="text-sm font-medium" style={active ? { color: accent } : undefined}>
-                    {opt.label}
-                  </div>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{opt.desc}</div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
 
         <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
           <div className="mb-2">
@@ -1115,6 +1088,36 @@ export function StartView({
                 Varje grupp behöver minst en bana.
               </p>
             )}
+        </section>
+
+        <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+          <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Lottning</h2>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { value: "automatic", label: "Automatisk", desc: "Slumpa lag i grupperna" },
+              { value: "manual", label: "Manuell", desc: "Dra lag till valfri grupp" },
+            ] as const).map((opt) => {
+              const active = lottning === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setLottning(opt.value)}
+                  aria-pressed={active}
+                  className="text-left rounded-lg border px-3 py-2 transition"
+                  style={active
+                    ? { borderColor: accent, backgroundColor: `${accent}10` }
+                    : { borderColor: "#e4e4e7" }
+                  }
+                >
+                  <div className="text-sm font-medium" style={active ? { color: accent } : undefined}>
+                    {opt.label}
+                  </div>
+                  <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{opt.desc}</div>
+                </button>
+              );
+            })}
+          </div>
         </section>
 
         </div>{/* end right column */}
