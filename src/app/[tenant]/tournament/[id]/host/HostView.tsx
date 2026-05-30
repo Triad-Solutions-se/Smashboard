@@ -172,6 +172,7 @@ export function HostView({
         rests,
       };
       setData(loaded);
+      setErr(null);
       return loaded;
     } catch (e) {
       setErr((e as Error).message);
@@ -203,6 +204,10 @@ export function HostView({
     // Reload on tab-visible so the host view recovers after the laptop sleeps.
     const onVisible = () => { if (document.visibilityState === "visible") void load(); };
     document.addEventListener("visibilitychange", onVisible);
+    // Also reload as soon as the network is back — sleep/wake often fires
+    // `online` before the visibility event settles.
+    const onOnline = () => { void load(); };
+    window.addEventListener("online", onOnline);
 
     // Periodic fallback in case realtime drops without a visibility event.
     const timer = setInterval(() => { void load(); }, 15_000);
@@ -210,11 +215,16 @@ export function HostView({
     return () => {
       supabaseClient.removeChannel(channel);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
       clearInterval(timer);
     };
   }, [tournamentId, load]);
 
-  if (err)
+  // Only block the whole view when we have no data at all. Once we've loaded
+  // once, keep the host UI visible across transient fetch failures (e.g. the
+  // laptop sleeping) and surface the error as a non-blocking banner. The
+  // periodic reload + `online`/visibility handlers will clear `err` on recovery.
+  if (err && !data)
     return (
       <div className="p-8 text-red-600">
         Fel: {err}
@@ -223,13 +233,30 @@ export function HostView({
   if (!data) return <div className="p-8 text-zinc-500">Laddar...</div>;
 
   return (
-    <HostInner
-      tenant={tenant}
-      data={data}
-      reload={load}
-      busy={busy}
-      setBusy={setBusy}
-    />
+    <>
+      {err && (
+        <div className="sticky top-0 z-30 border-b border-amber-200 bg-amber-50 dark:bg-amber-950/40 px-5 py-2 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3">
+          <span>
+            <span className="font-semibold">Anslutningen tappades.</span>{" "}
+            Försöker återansluta…
+          </span>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="font-semibold underline hover:no-underline"
+          >
+            Försök igen
+          </button>
+        </div>
+      )}
+      <HostInner
+        tenant={tenant}
+        data={data}
+        reload={load}
+        busy={busy}
+        setBusy={setBusy}
+      />
+    </>
   );
 }
 
