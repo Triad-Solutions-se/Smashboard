@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import QRCode from "react-qr-code";
 import { supabaseClient } from "@/lib/supabase/client";
 import type {
   Tenant,
@@ -971,7 +972,15 @@ function HostInner({
   const [koTieErr, setKOTieErr] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    setPlayUrl(
+      `${window.location.origin}/${tenant.slug}/tournament/${tournament.id}/play`
+    );
+  }, [tenant.slug, tournament.id]);
   const unpaidCount = useMemo(
     () => paymentRows.filter((r) => !r.paid).length,
     [paymentRows]
@@ -1154,6 +1163,35 @@ function HostInner({
             )}
           </button>
           )}
+          {!isFullscreen &&
+            tournament.status === "active" &&
+            tournament.format === "gruppspel" && (
+              <button
+                type="button"
+                onClick={() => setQrOpen(true)}
+                aria-label="QR-kod för mobilrapportering"
+                title="QR-kod för mobilrapportering"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-4 h-4 text-zinc-500"
+                  aria-hidden="true"
+                >
+                  <rect x="3" y="3" width="7" height="7" rx="1" />
+                  <rect x="14" y="3" width="7" height="7" rx="1" />
+                  <rect x="3" y="14" width="7" height="7" rx="1" />
+                  <path d="M14 14h3v3h-3zM20 14h1v1h-1zM14 20h3v1h-3zM20 17h1v4M17 20h3" />
+                </svg>
+                <span className="hidden sm:inline">QR-kod</span>
+              </button>
+            )}
           {!isFullscreen && tournament.status === "active" && (
             <button
               type="button"
@@ -1416,6 +1454,10 @@ function HostInner({
             onSetPaid={handleSetPaid}
           />
         </PaymentModal>
+      )}
+
+      {qrOpen && playUrl && (
+        <QrCodeModal url={playUrl} onClose={() => setQrOpen(false)} />
       )}
 
       {settingsOpen && (
@@ -3039,6 +3081,83 @@ function PaymentModal({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function QrCodeModal({
+  url,
+  onClose,
+}: {
+  url: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function copyUrl() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked — silently no-op; the URL is visible on screen.
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="QR-kod för mobilrapportering"
+    >
+      <div
+        className="w-full max-w-sm rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Rapportera via mobil</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Stäng"
+            className="h-8 w-8 rounded text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden>
+              <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L8.94 10l-4.72 4.72a.75.75 0 1 0 1.06 1.06L10 11.06l4.72 4.72a.75.75 0 1 0 1.06-1.06L11.06 10l4.72-4.72a.75.75 0 0 0-1.06-1.06L10 8.94 5.28 4.22Z" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-6 flex flex-col items-center gap-4">
+          <p className="text-sm text-zinc-600 dark:text-zinc-300 text-center">
+            Spelare skannar koden för att välja sitt lag och rapportera resultat.
+          </p>
+          <div className="rounded-lg bg-white p-3">
+            <QRCode value={url} style={{ width: 220, height: 220 }} />
+          </div>
+          <div className="w-full flex items-center gap-2">
+            <code className="flex-1 truncate text-xs px-3 py-2 rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-200">
+              {url}
+            </code>
+            <button
+              type="button"
+              onClick={copyUrl}
+              className="shrink-0 px-3 py-2 rounded-md text-xs font-medium border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              {copied ? "Kopierad" : "Kopiera"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
