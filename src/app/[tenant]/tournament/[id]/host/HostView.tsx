@@ -1163,8 +1163,7 @@ function HostInner({
             )}
           </button>
           )}
-          {!isFullscreen &&
-            tournament.status === "active" &&
+          {tournament.status === "active" &&
             tournament.format === "gruppspel" && (
               <button
                 type="button"
