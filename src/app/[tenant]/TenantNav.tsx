@@ -130,14 +130,6 @@ export function TenantNav({ slug, name, primaryColor, logoUrl, logoUrlDark }: Pr
           />
         </div>
 
-        <Link
-          href={`${base}/tournament/new`}
-          className="px-3 py-1.5 rounded-md text-white text-sm font-semibold shadow-sm whitespace-nowrap"
-          style={{ backgroundColor: accent }}
-        >
-          + Ny session
-        </Link>
-
         <DarkModeToggle />
 
         <form action="/auth/signout" method="post" className="hidden sm:block">
