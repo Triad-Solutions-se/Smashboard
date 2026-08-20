@@ -1,16 +1,18 @@
-const SITE_URL = "https://triadsolutions.se";
+const SITE_URL = "https://smashboard.triadsolutions.se";
+const ORG_URL = "https://triadsolutions.se";
 
 const organization = {
   "@context": "https://schema.org",
   "@type": "Organization",
+  "@id": `${ORG_URL}#organization`,
   name: "Triad Solutions",
   alternateName: "Triad",
-  url: SITE_URL,
+  url: ORG_URL,
   logo: `${SITE_URL}/icons/logo.svg`,
   email: "kontakt@triadsolutions.se",
   description:
     "Triad Solutions bygger Smashboard — ett white-label turneringssystem för padelhallar.",
-  sameAs: [SITE_URL],
+  sameAs: [ORG_URL, SITE_URL],
   contactPoint: [
     {
       "@type": "ContactPoint",
@@ -28,7 +30,7 @@ const website = {
   name: "Smashboard",
   url: SITE_URL,
   inLanguage: "sv-SE",
-  publisher: { "@id": `${SITE_URL}#organization` },
+  publisher: { "@id": `${ORG_URL}#organization` },
 };
 
 const softwareApplication = {

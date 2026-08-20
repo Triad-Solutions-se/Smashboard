@@ -16,14 +16,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://triadsolutions.se"),
+  metadataBase: new URL("https://smashboard.triadsolutions.se"),
   title: {
     default:
-      "Smashboard — Turneringssystem för padelhallar | Mexicano & Americano på TV",
+      "Smashboard – turneringssystem för padel på storskärm",
     template: "%s · Smashboard",
   },
   description:
-    "Smashboard är turneringssystemet för padelhallar. Kör Mexicano, Americano och Lag-Mexicano med live TV-display via HDMI. White-label från 499 kr/mån — utan bindningstid.",
+    "Kör Mexicano, Americano och Lag-Mexicano i padelhallen med live resultat på TV via HDMI. Igång på fem minuter. White-label från 499 kr/mån.",
   applicationName: "Smashboard",
   category: "Sports tournament software",
   keywords: [
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "sv_SE",
-    url: "https://triadsolutions.se",
+    url: "https://smashboard.triadsolutions.se",
     siteName: "Smashboard",
     title:
       "Smashboard — Turneringssystem för padelhallar | Mexicano & Americano live på TV",

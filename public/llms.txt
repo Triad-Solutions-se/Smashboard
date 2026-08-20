@@ -54,4 +54,4 @@ En vanlig laptop med modern webbläsare (Chrome, Safari, Edge, Firefox) och en T
 
 ## Optional
 
-- [Hemsida](https://triadsolutions.se): Produktöversikt, format, priser och bokning av demo.
+- [Hemsida](https://smashboard.triadsolutions.se): Produktöversikt, format, priser och bokning av demo.
