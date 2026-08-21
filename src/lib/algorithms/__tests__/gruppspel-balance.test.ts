@@ -93,7 +93,7 @@ describe("balanceGroupGamesByTime", () => {
     const games = balanceGroupGamesByTime(5, [3, 2], [1, 1]);
     expect(games[0]).toBe(5);
     expect(games[1]).toBe(maxStretchedGames(5));
-    expect(games[1]).toBe(8);
+    expect(games[1]).toBe(6); // MAX_BALANCED_GAMES — the venue never plays longer
   });
 
   it("lands on the closest whole match length to the slowest group's window", () => {
@@ -150,9 +150,20 @@ describe("matchMinutes", () => {
 
 describe("maxStretchedGames", () => {
   it("allows at most 1.5x the host's setting", () => {
-    expect(maxStretchedGames(5)).toBe(8);
-    expect(maxStretchedGames(9)).toBe(14);
     expect(maxStretchedGames(1)).toBe(2);
+    expect(maxStretchedGames(3)).toBe(5);
+  });
+
+  it("never proposes a match longer than the venue actually plays", () => {
+    // 1.5x5 would be 8, but MASTER.xlsx tops out at 7 and lives on 5-6.
+    expect(maxStretchedGames(4)).toBe(6);
+    expect(maxStretchedGames(5)).toBe(6);
+    expect(maxStretchedGames(6)).toBe(6);
+  });
+
+  it("still honours a host who deliberately picks a long match", () => {
+    expect(maxStretchedGames(7)).toBe(7);
+    expect(maxStretchedGames(9)).toBe(9);
   });
 
   it("never goes below the base", () => {

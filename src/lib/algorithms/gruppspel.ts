@@ -226,10 +226,17 @@ export function matchMinutes(target: number): number {
 // group is allowed to end ahead of the others.
 export const MAX_GAMES_STRETCH = 1.5;
 
+// Hard ceiling on a stretched match, independent of the ratio. Bon Padel's 30
+// gruppspel drawsheets never go past 7 games and sit on 5-6 almost always
+// (see venue-templates.ts), so a balancer that proposes 8 or 9 is proposing a
+// format the venue does not run — however neatly it fills the courts.
+export const MAX_BALANCED_GAMES = 6;
+
 export function maxStretchedGames(base: number): number {
   return Math.min(
     MAX_GAMES_PER_MATCH,
-    Math.max(base, Math.round(base * MAX_GAMES_STRETCH))
+    // Never below what the host actually asked for: a host who types 7 gets 7.
+    Math.max(base, Math.min(Math.round(base * MAX_GAMES_STRETCH), MAX_BALANCED_GAMES))
   );
 }
 

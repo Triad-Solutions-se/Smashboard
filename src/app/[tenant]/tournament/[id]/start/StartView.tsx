@@ -39,6 +39,7 @@ import {
   playoffStageCourts,
   type PlayoffStageKey,
 } from "@/lib/algorithms/knockout";
+import { recommendedGames, venueTemplate } from "@/lib/algorithms/venue-templates";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
 
 const STAGE_LABELS: Record<PlayoffStageKey, string> = {
@@ -56,7 +57,7 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-type Preset = { groups: number; advances: number };
+type Preset = { groups: number; advances: number; fromVenue?: boolean };
 
 // Auto-balance per-group games_per_match so every group is on court for
 // roughly the same wall-clock time. Groups don't need the same number of
@@ -117,8 +118,21 @@ function getPresets(n: number): Preset[] {
   // 21+ teams: 6 groups × 2 → 12-team QF (with byes/play-ins, one bracket)
   if (n >= 21 && feasible(6, 2)) out.push({ groups: 6, advances: 2 });
 
+  // The venue's own template for this field size leads, when they have one.
+  // Its group count comes from MASTER.xlsx; the advances value does not (the
+  // sheets only state it a handful of times), so reuse the vetted preset for
+  // that group count and fall back to 2 — the only value the file ever names.
+  const venue = venueTemplate(n);
+  if (venue) {
+    const match = out.find((p) => p.groups === venue.groups);
+    const advances = match?.advances ?? 2;
+    if (feasible(venue.groups, advances)) {
+      out.unshift({ groups: venue.groups, advances, fromVenue: true });
+    }
+  }
+
   // Deduplicate by (groups, advances) preserving order — earlier wins so the
-  // QF-bracket presets stay at the front.
+  // venue template and then the QF-bracket presets stay at the front.
   return out.filter(
     (p, i, arr) => arr.findIndex((q) => q.groups === p.groups && q.advances === p.advances) === i
   );
@@ -167,6 +181,9 @@ export function StartView({
   // "games" = host sets the match length and sees the finish time;
   // "time" = host sets the time available and the match length is solved.
   const [lengthMode, setLengthMode] = useState<"games" | "time">("games");
+  // Until the host types their own value, the match length follows the venue's
+  // template for this field size (MASTER.xlsx). Time mode overrides it too.
+  const [gamesTouched, setGamesTouched] = useState(false);
   const [budgetHours, setBudgetHours] = useState(3);
   const [budgetMins, setBudgetMins] = useState(0);
   // Playoff matches have their own length — they're single elimination, so the
@@ -395,6 +412,14 @@ export function StartView({
     () => solveGamesForBudget(budgetMinutes, scheduleShape),
     [budgetMinutes, scheduleShape]
   );
+  // Match length follows the venue's own template for the current field size
+  // until the host types something else. Time mode solves it instead.
+  useEffect(() => {
+    if (lengthMode !== "games" || gamesTouched) return;
+    if (fullTeamCount < 2) return;
+    setBaseGamesPerMatch(recommendedGames(fullTeamCount));
+  }, [lengthMode, gamesTouched, fullTeamCount]);
+
   useEffect(() => {
     if (lengthMode !== "time") return;
     setTouchedGroups((prev) => (prev.size === 0 ? prev : new Set()));
@@ -687,7 +712,14 @@ export function StartView({
             if (presets.length === 0) return null;
             return (
               <div>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">Rekommenderat upplägg</p>
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
+                  Rekommenderat upplägg
+                  {presets.some((p) => p.fromVenue) && (
+                    <span className="font-normal text-zinc-400 dark:text-zinc-500">
+                      {" "}· ★ = er egen mall för {fullTeamCount} lag
+                    </span>
+                  )}
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {presets.map((p) => {
                     const total = p.groups * p.advances;
@@ -740,6 +772,7 @@ export function StartView({
                           : { borderColor: "#d4d4d8", color: "#52525b" }
                         }
                       >
+                        {p.fromVenue && <span className="mr-1">★</span>}
                         {p.groups} grupper × {p.advances} vidare
                         <span className="ml-1.5 opacity-70">· {stageLabel(total)}</span>
                         <span className="ml-1.5 opacity-60">· ~{fmtTime(presetEst.totalMinutes)}</span>
@@ -814,13 +847,43 @@ export function StartView({
                   min={1}
                   max={99}
                   value={baseGamesPerMatch}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setGamesTouched(true);
                     setBaseGamesPerMatch(
                       Math.max(1, parseInt(e.target.value || "1", 10))
-                    )
-                  }
+                    );
+                  }}
                   className="w-32 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
                 />
+                {fullTeamCount >= 2 && (() => {
+                  const rec = recommendedGames(fullTeamCount);
+                  const exact = venueTemplate(fullTeamCount);
+                  if (!gamesTouched) {
+                    return (
+                      <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+                        {exact
+                          ? `Er mall för ${fullTeamCount} lag: först till ${rec}.`
+                          : `Följer era mallar för närliggande storlekar: först till ${rec}.`}
+                      </p>
+                    );
+                  }
+                  if (rec === baseGamesPerMatch) return null;
+                  return (
+                    <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+                      Er mall säger först till {rec}.{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGamesTouched(false);
+                          setBaseGamesPerMatch(rec);
+                        }}
+                        className="underline hover:text-zinc-600 dark:hover:text-zinc-300"
+                      >
+                        Använd den
+                      </button>
+                    </p>
+                  );
+                })()}
               </>
             ) : (
               <>
