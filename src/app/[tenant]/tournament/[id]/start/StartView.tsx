@@ -179,9 +179,12 @@ export function StartView({
 
   const [numGroups, setNumGroups] = useState(2);
   const [baseGamesPerMatch, setBaseGamesPerMatch] = useState(5);
-  // "games" = host sets the match length and sees the finish time;
-  // "time" = host sets the time available and the match length is solved.
-  const [lengthMode, setLengthMode] = useState<"games" | "time">("games");
+  // "time" = host sets the time available and the match length is solved;
+  // "games" = host sets the match length and sees the finish time.
+  // Time leads: a host books the hall for a slot, so the finish time is the
+  // constraint they actually arrive with. Switching to "games" hands the match
+  // length back to the venue template for the field size.
+  const [lengthMode, setLengthMode] = useState<"games" | "time">("time");
   // Until the host types their own value, the match length follows the venue's
   // template for this field size (MASTER.xlsx). Time mode overrides it too.
   const [gamesTouched, setGamesTouched] = useState(false);
@@ -809,8 +812,8 @@ export function StartView({
           <div>
             <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5 mb-2">
               {([
-                { value: "games", label: "Matchlängd" },
                 { value: "time", label: "Sluttid" },
+                { value: "games", label: "Matchlängd" },
               ] as const).map((opt) => {
                 const active = lengthMode === opt.value;
                 return (
