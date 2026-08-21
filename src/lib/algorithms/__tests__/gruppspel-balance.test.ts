@@ -5,6 +5,8 @@ import {
   groupSlots,
   roundsForGroup,
   matchMinutes,
+  maxStretchedGames,
+  expectedGamesPlayed,
   MAX_GAMES_PER_MATCH,
 } from "../gruppspel";
 
@@ -58,7 +60,7 @@ describe("balanceGroupGamesByTime", () => {
     expect(a).toBeGreaterThan(b);
   });
 
-  it("keeps every group within 10% of the longest across the whole grid", () => {
+  it("keeps every group within 10% of the longest, or stops at the stretch cap", () => {
     for (let teams = 4; teams <= 50; teams++) {
       // The wizard caps groups so no group can hold fewer than 2 teams.
       for (let groups = 1; groups <= Math.min(8, Math.floor(teams / 2)); groups++) {
@@ -67,14 +69,50 @@ describe("balanceGroupGamesByTime", () => {
           const perGroupCourts = courtsFor(courts, groups);
           const games = balanceGroupGamesByTime(5, sizes, perGroupCourts);
           expect(Math.min(...games)).toBeGreaterThanOrEqual(1);
-          expect(Math.max(...games)).toBeLessThanOrEqual(MAX_GAMES_PER_MATCH);
+          expect(Math.max(...games)).toBeLessThanOrEqual(maxStretchedGames(5));
 
           const minutes = sizes.map((n, i) =>
             groupMinutes(n, perGroupCourts[i], games[i])
           );
-          const spread = Math.max(...minutes) - Math.min(...minutes);
-          expect(spread / Math.max(...minutes)).toBeLessThan(0.1);
+          const longest = Math.max(...minutes);
+          minutes.forEach((m, i) => {
+            // A group is either balanced to within 10% of the longest, or it
+            // has hit the stretch cap and is deliberately finishing early.
+            const balanced = (longest - m) / longest < 0.1;
+            expect(balanced || games[i] === maxStretchedGames(5)).toBe(true);
+          });
         }
+      }
+    }
+  });
+
+  it("never stretches a group past the cap, even beside a far slower group", () => {
+    // 3 teams vs 2 teams on one court each: the 2-team group has a single
+    // match to fill the other group's whole window. Before the cap it was
+    // handed a 24-game match; now it plays a long-but-sane one and waits.
+    const games = balanceGroupGamesByTime(5, [3, 2], [1, 1]);
+    expect(games[0]).toBe(5);
+    expect(games[1]).toBe(maxStretchedGames(5));
+    expect(games[1]).toBe(8);
+  });
+
+  it("lands on the closest whole match length to the slowest group's window", () => {
+    for (let teams = 4; teams <= 30; teams++) {
+      for (let groups = 1; groups <= Math.min(6, Math.floor(teams / 2)); groups++) {
+        const sizes = sizesFor(teams, groups);
+        const perGroupCourts = courtsFor(4, groups);
+        const games = balanceGroupGamesByTime(5, sizes, perGroupCourts);
+        const slots = sizes.map((n, i) => groupSlots(n, perGroupCourts[i]));
+        const target = Math.max(...slots.map((s) => s * matchMinutes(5)));
+        const cap = maxStretchedGames(5);
+        slots.forEach((s, i) => {
+          const chosen = Math.abs(target - s * matchMinutes(games[i]));
+          for (let g = 1; g <= cap; g++) {
+            expect(Math.abs(target - s * matchMinutes(g))).toBeGreaterThanOrEqual(
+              chosen
+            );
+          }
+        });
       }
     }
   });
@@ -87,8 +125,39 @@ describe("balanceGroupGamesByTime", () => {
 });
 
 describe("matchMinutes", () => {
-  it("is games plus fixed changeover overhead", () => {
-    expect(matchMinutes(5)).toBe(20);
-    expect(matchMinutes(10)).toBe(35);
+  it("models a first-to-N match, not an exactly-N one", () => {
+    // first-to-5 runs 5-9 games; the neutral assumption is 7.
+    expect(expectedGamesPlayed(5)).toBe(7);
+    expect(matchMinutes(5)).toBe(26); // 7 games x 3 min + 5 min changeover
+    expect(expectedGamesPlayed(10)).toBe(14.5);
+    expect(matchMinutes(10)).toBe(49);
+  });
+
+  it("is bounded by the whitewash and the maximum-length match", () => {
+    for (let target = 1; target <= 20; target++) {
+      const games = expectedGamesPlayed(target);
+      expect(games).toBeGreaterThanOrEqual(target);
+      expect(games).toBeLessThanOrEqual(2 * target - 1);
+    }
+  });
+
+  it("increases strictly with the target so the balancer can invert it", () => {
+    for (let target = 1; target < 40; target++) {
+      expect(matchMinutes(target + 1)).toBeGreaterThan(matchMinutes(target));
+    }
+  });
+});
+
+describe("maxStretchedGames", () => {
+  it("allows at most 1.5x the host's setting", () => {
+    expect(maxStretchedGames(5)).toBe(8);
+    expect(maxStretchedGames(9)).toBe(14);
+    expect(maxStretchedGames(1)).toBe(2);
+  });
+
+  it("never goes below the base", () => {
+    for (let base = 1; base <= 20; base++) {
+      expect(maxStretchedGames(base)).toBeGreaterThanOrEqual(base);
+    }
   });
 });

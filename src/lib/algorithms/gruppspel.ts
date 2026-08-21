@@ -177,8 +177,42 @@ export const MINUTES_PER_GAME = 3;
 export const MATCH_OVERHEAD_MIN = 5;
 export const MAX_GAMES_PER_MATCH = 99;
 
-export function matchMinutes(games: number): number {
-  return games * MINUTES_PER_GAME + MATCH_OVERHEAD_MIN;
+// A match is first-to-N, not exactly-N: the host score entry requires the
+// winner to land on N and rejects draws, so the loser ends anywhere from 0 to
+// N-1. A match therefore runs between N and 2N-1 games — the setting is the
+// FLOOR of a match's length, never its length.
+//
+// TYPICAL_LOSER_SHARE is how much of the target the losing side is assumed to
+// reach. 0.5 is the neutral assumption: a uniformly distributed loser score
+// averages (N-1)/2. Drop it towards 0 if a venue's matches run lopsided (0
+// models a whitewash every time, which is what this file assumed before).
+export const TYPICAL_LOSER_SHARE = 0.5;
+
+// Games actually played in a first-to-`target` match, on average.
+export function expectedGamesPlayed(target: number): number {
+  if (target < 1) return 0;
+  return target + (target - 1) * TYPICAL_LOSER_SHARE;
+}
+
+// Wall-clock minutes for one match with the given games-per-match target.
+export function matchMinutes(target: number): number {
+  return Math.round(
+    expectedGamesPlayed(target) * MINUTES_PER_GAME + MATCH_OVERHEAD_MIN
+  );
+}
+
+// How far the time balancing may stretch a group's match length above the
+// value the host actually typed. Past this the matches stop resembling the
+// format that was chosen — a 24-game match to soak up an idle court is worse
+// than letting a small group finish early — so the stretch is capped and the
+// group is allowed to end ahead of the others.
+export const MAX_GAMES_STRETCH = 1.5;
+
+export function maxStretchedGames(base: number): number {
+  return Math.min(
+    MAX_GAMES_PER_MATCH,
+    Math.max(base, Math.round(base * MAX_GAMES_STRETCH))
+  );
 }
 
 // Rounds a round-robin group needs. Odd team counts add a bye round.
@@ -219,12 +253,21 @@ export function balanceGroupGamesByTime(
   );
   const target = Math.max(0, ...slots.map((s) => s * matchMinutes(base)));
   if (target <= 0) return teamsPerGroup.map(() => base);
+  const cap = maxStretchedGames(base);
   return slots.map((s) => {
     if (s <= 0) return base;
-    const games = Math.round(
-      (target / s - MATCH_OVERHEAD_MIN) / MINUTES_PER_GAME
-    );
-    return Math.min(MAX_GAMES_PER_MATCH, Math.max(1, games));
+    // Grow from the host's base towards the whole match length that lands
+    // closest to the slowest group's window, stopping at the stretch cap.
+    // Match length is quantised (~4.5 min per extra game), so the nearest fit
+    // beats the largest fit — the latter can leave a group 15% short.
+    let games = Math.max(1, Math.min(base, cap));
+    while (games < cap) {
+      const here = Math.abs(target - s * matchMinutes(games));
+      const next = Math.abs(target - s * matchMinutes(games + 1));
+      if (next >= here) break;
+      games++;
+    }
+    return games;
   });
 }
 

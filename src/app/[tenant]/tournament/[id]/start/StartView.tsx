@@ -889,6 +889,14 @@ export function StartView({
                 {Array.from({ length: numGroups }, (_, idx) => {
                   const teamsHere = teamsPerGroupArray[idx];
                   const isTouched = touchedGroups.has(idx);
+                  const mins = groupMinutesPerGroup[idx] ?? 0;
+                  const longest = Math.max(0, ...groupMinutesPerGroup);
+                  // The balancer stretches a short group's matches to fill the
+                  // slowest group's window, but only up to MAX_GAMES_STRETCH.
+                  // Past that the group simply finishes early — say so, or the
+                  // uneven times look like a bug.
+                  const finishesEarly =
+                    !isTouched && longest > 0 && (longest - mins) / longest > 0.1;
                   return (
                     <div
                       key={idx}
@@ -916,7 +924,12 @@ export function StartView({
                       {teamsHere !== undefined && (
                         <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">
                           {isTouched ? "" : "auto · "}
-                          ~{fmtTime(groupMinutesPerGroup[idx] ?? 0)}
+                          ~{fmtTime(mins)}
+                          {finishesEarly && (
+                            <span className="block text-amber-600 dark:text-amber-500">
+                              klar {fmtTime(longest - mins)} tidigare
+                            </span>
+                          )}
                         </p>
                       )}
                     </div>
