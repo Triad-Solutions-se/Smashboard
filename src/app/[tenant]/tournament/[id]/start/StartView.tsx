@@ -1452,7 +1452,7 @@ export function StartView({
 
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
         {blockers.length > 0 && (
-          <div className="max-w-xs rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 shadow-lg shadow-black/10">
+          <div className="max-w-xs rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-3 py-2 shadow-lg shadow-black/20">
             <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
               Innan du kan starta
             </p>
