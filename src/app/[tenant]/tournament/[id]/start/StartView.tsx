@@ -35,6 +35,7 @@ import {
 } from "@/lib/algorithms/schedule";
 import {
   autoBracketSizes,
+  maxAdvances,
   playoffRoundPlan,
   playoffStageCourts,
   type PlayoffStageKey,
@@ -119,14 +120,14 @@ function getPresets(n: number): Preset[] {
   if (n >= 21 && feasible(6, 2)) out.push({ groups: 6, advances: 2 });
 
   // The venue's own template for this field size leads, when they have one.
-  // Its group count comes from MASTER.xlsx; the advances value does not (the
-  // sheets only state it a handful of times), so reuse the vetted preset for
-  // that group count and fall back to 2 — the only value the file ever names.
+  // Its group count comes from MASTER.xlsx; the advances value does not, so it
+  // is chosen to keep as many teams playing as the bracket allows — which is
+  // what the drawsheets do ("5:ORNA TILL B-FINAL", "A- & B KVARTSFINAL",
+  // "GARANTI PÅ 8 MATCHER").
   const venue = venueTemplate(n);
   if (venue) {
-    const match = out.find((p) => p.groups === venue.groups);
-    const advances = match?.advances ?? 2;
-    if (feasible(venue.groups, advances)) {
+    const advances = maxAdvances(n, venue.groups);
+    if (advances >= 1 && feasible(venue.groups, advances)) {
       out.unshift({ groups: venue.groups, advances, fromVenue: true });
     }
   }
@@ -915,18 +916,28 @@ export function StartView({
                   />
                   <span className="text-sm text-zinc-500 dark:text-zinc-400">min</span>
                 </div>
-                {budgetSolution.fits ? (
-                  <p className="text-xs mt-1" style={{ color: accent }}>
-                    → {budgetSolution.games} games per match, tiebreak vid{" "}
-                    {budgetSolution.games - 1}-{budgetSolution.games - 1} · klart på ~
-                    {fmtTime(budgetSolution.minutes)}
-                    {budgetSolution.slackMinutes > 0 && (
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {" "}({fmtTime(budgetSolution.slackMinutes)} marginal)
-                      </span>
-                    )}
+                {budgetSolution.fits ? (() => {
+                  // Report the live estimate, not the solver's own figure. They
+                  // agree until a per-group or playoff value is overridden by
+                  // hand, and then it is the live one that is true — otherwise
+                  // this line claims spare time while the estimate card below
+                  // says the session overruns.
+                  const actual = estimate.totalMinutes;
+                  const slack = budgetMinutes - actual;
+                  return (
+                  <p className="text-xs mt-1" style={{ color: slack < 0 ? "#d97706" : accent }}>
+                    → {baseGamesPerMatch} games per match, tiebreak vid{" "}
+                    {baseGamesPerMatch - 1}-{baseGamesPerMatch - 1} · klart på ~
+                    {fmtTime(actual)}
+                    <span className={slack < 0 ? "" : "text-zinc-500 dark:text-zinc-400"}>
+                      {" "}
+                      ({slack < 0
+                        ? `${fmtTime(-slack)} över`
+                        : `${fmtTime(slack)} marginal`})
+                    </span>
                   </p>
-                ) : (
+                  );
+                })() : (
                   <p className="text-xs text-amber-600 mt-1">
                     Ryms inte — även kortast möjliga match (1 game) tar ~
                     {fmtTime(budgetSolution.minutes)}. Lägg till banor, färre lag

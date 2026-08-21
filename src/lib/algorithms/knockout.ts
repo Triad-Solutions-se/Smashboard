@@ -95,6 +95,25 @@ export function autoBracketSizes(totalAdvancing: number): number[] {
   return [totalAdvancing];
 }
 
+// Largest teams-per-group that advances into a bracket this file can actually
+// build. A single bracket holds up to 16 (top seeds take byes and the rest play
+// in); past that only clean multiples of 8 work, splitting into A-, B-,
+// C-slutspel. Anything else — 20 advancing, say — would land in a single
+// 20-team bracket, which buildQFMatches cannot lay out.
+//
+// Used by the setup wizard to keep as many teams playing as possible, which is
+// what the venue's own drawsheets do ("5:ORNA TILL B-FINAL", "A- & B
+// KVARTSFINAL", "GARANTI PÅ 8 MATCHER").
+export function maxAdvances(teams: number, groups: number): number {
+  if (groups < 1 || teams < 2) return 0;
+  for (let a = Math.floor(teams / groups); a >= 1; a--) {
+    const total = groups * a;
+    if (total < 2) continue;
+    if (total <= 16 || total % 8 === 0) return a;
+  }
+  return 0;
+}
+
 // Per-bracket seed-ordered team IDs under the auto-bracket rule.
 // Both single- and multi-bracket cases use (rank, group order) via
 // `collectSeeds`. Group label decides seed position within a rank tier — GF/GD
