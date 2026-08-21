@@ -432,17 +432,22 @@ export function StartView({
   // Every group needs at least 2 teams — a lone team plays no matches, never
   // completes its group, and would leave the session unfinishable.
   const groupsBigEnough = fullTeamCount >= numGroups * 2;
-  const canSubmit =
-    formatSupported &&
-    fullTeamCount >= 2 &&
-    allPaired &&
-    selectedCourts.size >= 1 &&
-    allGroupsHaveCourts &&
-    allGamesValid &&
-    baseGamesPerMatch >= 1 &&
-    playoffGames >= 1 &&
-    numGroups >= 1 &&
-    groupsBigEnough;
+  // Everything that must be true before a session can start, each with the
+  // sentence shown to the host. A silently greyed-out button leaves them
+  // hunting for what is wrong — especially now that some settings sit inside
+  // collapsed sections — so the reasons are listed next to it.
+  const blockers: string[] = [];
+  if (!formatSupported) blockers.push("Formatet stöds inte i den här vyn.");
+  if (fullTeamCount < 2) blockers.push("Minst 2 fulla lag behövs.");
+  if (!allPaired) blockers.push("Para ihop alla ensamma spelare.");
+  if (numGroups < 1) blockers.push("Välj minst en grupp.");
+  if (!groupsBigEnough) blockers.push("Varje grupp behöver minst 2 lag.");
+  if (selectedCourts.size < 1) blockers.push("Välj minst en bana.");
+  else if (!allGroupsHaveCourts) blockers.push("Varje grupp behöver minst en bana.");
+  if (!allGamesValid || baseGamesPerMatch < 1 || playoffGames < 1)
+    blockers.push("Matchlängd måste vara minst 1 game.");
+
+  const canSubmit = blockers.length === 0;
 
   function setGroupGameAt(idx: number, value: number) {
     setGroupGames((prev) => {
@@ -1397,7 +1402,22 @@ export function StartView({
         </div>{/* end grid */}
       </main>
 
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+        {blockers.length > 0 && (
+          <div className="max-w-xs rounded-lg border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 shadow-lg shadow-black/10">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+              Innan du kan starta
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {blockers.map((b) => (
+                <li key={b} className="text-xs text-amber-700 dark:text-amber-400 flex gap-1.5">
+                  <span aria-hidden>•</span>
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <button
           onClick={submit}
           disabled={!canSubmit || submitting}
