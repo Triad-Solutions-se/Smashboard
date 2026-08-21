@@ -841,3 +841,90 @@ export function currentKOStage(koMatches: TournamentMatch[]): MatchStage | null 
   if (complete.length > 0) return complete[complete.length - 1].stage;
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Round planning (used by the setup wizard for court recommendations and time
+// estimates). This mirrors what buildKnockoutBracket + generateNextKORound
+// actually produce, round by round — a stage can span more than one round, so
+// its total match count is NOT the number of courts it needs.
+// ---------------------------------------------------------------------------
+
+export type PlayoffStageKey = "qf" | "sf" | "final";
+
+// One round of play. `matches` all run simultaneously, so it doubles as the
+// number of courts that round needs.
+export type PlayoffRound = { stage: PlayoffStageKey; matches: number };
+
+// Rounds for a single bracket of `n` teams, in play order.
+//
+// n = 2       → Final
+// n = 3       → 1 play-in (displayed as Semifinal) → Final
+// n = 4       → 2 SF → Final
+// 5 ≤ n ≤ 8   → (n-4) QF (top 8-n seeds get byes) → 2 SF → Final
+// 9 ≤ n ≤ 16  → (n-8) play-in QF → 4 QF → 2 SF → Final
+//
+// A bronze match runs alongside the final, so it adds a court to the final
+// round rather than a round of its own. It only exists when exactly two
+// semifinals fed the final (see generateNextKORound).
+export function bracketRoundPlan(n: number, hasBronze: boolean): PlayoffRound[] {
+  if (n < 2) return [];
+  const rounds: PlayoffRound[] = [];
+  if (n > 4) {
+    if (n > 8) {
+      rounds.push({ stage: "qf", matches: n - 8 });
+      rounds.push({ stage: "qf", matches: 4 });
+    } else {
+      rounds.push({ stage: "qf", matches: n - 4 });
+    }
+    rounds.push({ stage: "sf", matches: 2 });
+  } else if (n > 2) {
+    rounds.push({ stage: "sf", matches: n === 3 ? 1 : 2 });
+  }
+  const feeder = rounds[rounds.length - 1];
+  const bronze =
+    hasBronze && feeder?.stage === "sf" && feeder.matches === 2 ? 1 : 0;
+  rounds.push({ stage: "final", matches: 1 + bronze });
+  return rounds;
+}
+
+// Rounds across every auto-generated bracket. Brackets play in parallel, so
+// round i of the A-slutspel and round i of the B-slutspel are on court at the
+// same time and their match counts add up.
+export function playoffRoundPlan(
+  totalAdvancing: number,
+  hasBronze: boolean
+): PlayoffRound[] {
+  const plans = autoBracketSizes(totalAdvancing).map((n) =>
+    bracketRoundPlan(n, hasBronze)
+  );
+  const depth = Math.max(0, ...plans.map((p) => p.length));
+  const out: PlayoffRound[] = [];
+  for (let i = 0; i < depth; i++) {
+    const rounds = plans.map((p) => p[i]).filter(Boolean);
+    if (rounds.length === 0) continue;
+    out.push({
+      stage: rounds[0].stage,
+      matches: rounds.reduce((s, r) => s + r.matches, 0),
+    });
+  }
+  return out;
+}
+
+// Courts each stage needs = the busiest single round in that stage, plus how
+// many rounds the stage spans (a stage with 2 rounds reuses the same courts).
+export function playoffStageCourts(
+  totalAdvancing: number,
+  hasBronze: boolean
+): { stage: PlayoffStageKey; courts: number; rounds: number }[] {
+  const out: { stage: PlayoffStageKey; courts: number; rounds: number }[] = [];
+  for (const r of playoffRoundPlan(totalAdvancing, hasBronze)) {
+    const last = out[out.length - 1];
+    if (last?.stage === r.stage) {
+      last.courts = Math.max(last.courts, r.matches);
+      last.rounds += 1;
+    } else {
+      out.push({ stage: r.stage, courts: r.matches, rounds: 1 });
+    }
+  }
+  return out;
+}

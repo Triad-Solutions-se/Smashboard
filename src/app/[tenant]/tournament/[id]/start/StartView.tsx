@@ -28,36 +28,19 @@ import {
   groupStageMinutes,
   matchMinutes,
 } from "@/lib/algorithms/gruppspel";
-import { autoBracketSizes } from "@/lib/algorithms/knockout";
+import {
+  autoBracketSizes,
+  playoffRoundPlan,
+  playoffStageCourts,
+  type PlayoffStageKey,
+} from "@/lib/algorithms/knockout";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
 
-// Per-stage match counts across all auto-generated brackets.
-// Stage labels match the DB: play-in rounds are stored under `quarter_final`,
-// and n=3 SF play-ins are still labeled "Semifinal" for display purposes.
-function playoffMatchCounts(
-  totalAdvancing: number,
-  hasBronze: boolean,
-): { qf: number; sf: number; final: number } {
-  const sizes = autoBracketSizes(totalAdvancing);
-  let qf = 0;
-  let sf = 0;
-  let final = 0;
-  for (const n of sizes) {
-    if (n < 2) continue;
-    if (n === 2) {
-      final += 1;
-    } else if (n <= 4) {
-      sf += n === 3 ? 1 : 2;
-      final += 1;
-    } else {
-      qf += n - 4;
-      sf += 2;
-      final += 1;
-    }
-  }
-  if (hasBronze) final += sizes.length;
-  return { qf, sf, final };
-}
+const STAGE_LABELS: Record<PlayoffStageKey, string> = {
+  qf: "Kvartsfinal",
+  sf: "Semifinal",
+  final: "Final",
+};
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -119,10 +102,13 @@ function estimateTournamentTime(
   let playoffMinutes = 0;
   if (advancesPerGroup > 0 && numGroups > 0) {
     const totalAdvancing = advancesPerGroup * numGroups;
-    const { qf, sf, final } = playoffMatchCounts(totalAdvancing, hasBronze);
-    if (qf > 0) playoffMinutes += Math.ceil(qf / activeCourts) * playoffMinPerMatch;
-    if (sf > 0) playoffMinutes += Math.ceil(sf / activeCourts) * playoffMinPerMatch;
-    if (final > 0) playoffMinutes += Math.ceil(final / activeCourts) * playoffMinPerMatch;
+    // Walk the real round sequence — a stage can span several rounds (a 12-team
+    // bracket plays a play-in round AND a quarter-final round), and each round
+    // costs its own slot on court.
+    for (const round of playoffRoundPlan(totalAdvancing, hasBronze)) {
+      playoffMinutes +=
+        Math.ceil(round.matches / activeCourts) * playoffMinPerMatch;
+    }
   }
 
   return {
@@ -966,30 +952,22 @@ export function StartView({
             </div>
             {advancesPerGroup > 0 && (() => {
               const total = advancesPerGroup * numGroups;
-              const { qf: qfCourts, sf: sfCourts, final: finalCourts } =
-                playoffMatchCounts(total, hasBronze);
-              const court = (n: number) => n === 1 ? "1 bana" : `${n} banor`;
-              if (total <= 2) return (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                  {total} lag totalt → Final <span className="text-zinc-400 dark:text-zinc-500">({court(finalCourts)})</span>
-                </p>
-              );
-              if (total <= 4) return (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                  {total} lag totalt →{" "}
-                  Semifinal <span className="text-zinc-400 dark:text-zinc-500">({court(sfCourts)})</span>
-                  {" → "}
-                  Final <span className="text-zinc-400 dark:text-zinc-500">({court(finalCourts)})</span>
-                </p>
-              );
+              const stages = playoffStageCourts(total, hasBronze);
+              if (stages.length === 0) return null;
+              const court = (n: number) => (n === 1 ? "1 bana" : `${n} banor`);
               return (
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                   {total} lag totalt →{" "}
-                  Kvartsfinal <span className="text-zinc-400 dark:text-zinc-500">({court(qfCourts)})</span>
-                  {" → "}
-                  Semifinal <span className="text-zinc-400 dark:text-zinc-500">({court(sfCourts)})</span>
-                  {" → "}
-                  Final <span className="text-zinc-400 dark:text-zinc-500">({court(finalCourts)})</span>
+                  {stages.map((st, i) => (
+                    <React.Fragment key={st.stage}>
+                      {i > 0 && " → "}
+                      {STAGE_LABELS[st.stage]}{" "}
+                      <span className="text-zinc-400 dark:text-zinc-500">
+                        ({court(st.courts)}
+                        {st.rounds > 1 ? `, ${st.rounds} omgångar` : ""})
+                      </span>
+                    </React.Fragment>
+                  ))}
                 </p>
               );
             })()}
@@ -1034,13 +1012,33 @@ export function StartView({
               <p className="text-xs font-medium text-zinc-500">Banor för slutspel</p>
               {(() => {
                 const totalAdvancing = advancesPerGroup * numGroups;
-                const stages: { key: "qf" | "sf" | "final"; label: string; state: Set<string>; setter: React.Dispatch<React.SetStateAction<Set<string>>> }[] = [];
-                if (totalAdvancing > 4) stages.push({ key: "qf", label: "Kvartsfinal", state: qfCourtIds, setter: setQfCourtIds });
-                if (totalAdvancing > 2) stages.push({ key: "sf", label: "Semifinal", state: sfCourtIds, setter: setSfCourtIds });
-                stages.push({ key: "final", label: "Final", state: finalCourtIds, setter: setFinalCourtIds });
-                return stages.map(({ key, label, state, setter }) => (
+                const stateFor: Record<PlayoffStageKey, [Set<string>, React.Dispatch<React.SetStateAction<Set<string>>>]> = {
+                  qf: [qfCourtIds, setQfCourtIds],
+                  sf: [sfCourtIds, setSfCourtIds],
+                  final: [finalCourtIds, setFinalCourtIds],
+                };
+                return playoffStageCourts(totalAdvancing, hasBronze).map((st) => {
+                  const key = st.stage;
+                  const label = STAGE_LABELS[key];
+                  const [state, setter] = stateFor[key];
+                  const rec = st.courts;
+                  const assigned = state.size;
+                  const recColor =
+                    assigned === 0 || assigned === rec
+                      ? "#71717a"
+                      : assigned < rec
+                        ? "#d97706"
+                        : "#71717a";
+                  return (
                   <div key={key}>
-                    <p className="text-xs text-zinc-600 font-medium mb-1">{label}</p>
+                    <p className="text-xs font-medium mb-1">
+                      <span className="text-zinc-600 dark:text-zinc-300">{label}</span>
+                      <span style={{ color: recColor }}>
+                        {" — "}
+                        {rec} {rec === 1 ? "bana" : "banor"} rekommenderas
+                        {st.rounds > 1 ? ` (${st.rounds} omgångar)` : ""}
+                      </span>
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {courts.map((c) => {
                         const on = state.has(c.id);
@@ -1068,7 +1066,8 @@ export function StartView({
                       })}
                     </div>
                   </div>
-                ));
+                  );
+                });
               })()}
             </div>
           )}
