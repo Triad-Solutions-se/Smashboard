@@ -173,8 +173,25 @@ export function totalRoundsFor(numTeamsPerGroup: number[]): number {
 // product is the number of sequential match slots the group occupies.
 // ---------------------------------------------------------------------------
 
+// Calibrated against padel reference timings, not guessed:
+//   single game        3-5 min
+//   single set         18-30 min  (first to 6)
+//   two-set match      45-65 min  (straight sets)
+//
+// The set figure is the load-bearing one, because it already contains the
+// changeovers between games and so gives the MARGINAL cost of a game inside
+// continuous play: a 6-0 set is 18/6 = 3.0 min/game and a 6-4 set is
+// 30/10 = 3.0. The "3-5 min" single-game figure sits higher because an
+// isolated game carries its own setup. Scheduling cares about the marginal
+// number, so 3 it is — see gruppspel-calibration.test.ts, which pins the
+// model to these ranges.
 export const MINUTES_PER_GAME = 3;
+
+// Changeover, walking on, and getting the score entered — the per-match cost
+// that isn't play. Backed out of the two-set figure: 2 sets of pure play at
+// 3 min/game is ~51 min against a stated 45-65 min including breaks.
 export const MATCH_OVERHEAD_MIN = 5;
+
 export const MAX_GAMES_PER_MATCH = 99;
 
 // A match is first-to-N, not exactly-N: the host score entry requires the
@@ -184,8 +201,9 @@ export const MAX_GAMES_PER_MATCH = 99;
 //
 // TYPICAL_LOSER_SHARE is how much of the target the losing side is assumed to
 // reach. 0.5 is the neutral assumption: a uniformly distributed loser score
-// averages (N-1)/2. Drop it towards 0 if a venue's matches run lopsided (0
-// models a whitewash every time, which is what this file assumed before).
+// averages (N-1)/2, and it reproduces the reference set length below. Drop it
+// towards 0 if a venue's matches run lopsided (0 models a whitewash every
+// time, which is what this file assumed before).
 export const TYPICAL_LOSER_SHARE = 0.5;
 
 // Games actually played in a first-to-`target` match, on average.
