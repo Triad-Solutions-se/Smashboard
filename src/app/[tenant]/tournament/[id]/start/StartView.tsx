@@ -29,6 +29,11 @@ import {
   matchMinutes,
 } from "@/lib/algorithms/gruppspel";
 import {
+  estimateTournamentTime,
+  solveGamesForBudget,
+  type ScheduleShape,
+} from "@/lib/algorithms/schedule";
+import {
   autoBracketSizes,
   playoffRoundPlan,
   playoffStageCourts,
@@ -53,13 +58,6 @@ function shuffle<T>(arr: T[]): T[] {
 
 type Preset = { groups: number; advances: number };
 
-type TimeEstimate = {
-  matchMinutes: number;
-  groupMinutes: number;
-  playoffMinutes: number;
-  totalMinutes: number;
-};
-
 // Auto-balance per-group games_per_match so every group is on court for
 // roughly the same wall-clock time. Groups don't need the same number of
 // matches — they should just finish together — so the balancing works from
@@ -70,53 +68,6 @@ function autoBalanceGroupGames(
   courtsPerGroup: number[]
 ): number[] {
   return balanceGroupGamesByTime(base, teamsPerGroup, courtsPerGroup);
-}
-
-function estimateTournamentTime(
-  teamsPerGroup: number[],
-  courtsPerGroup: number[],
-  groupGamesPerMatch: number[],
-  playoffGames: number,
-  numGroups: number,
-  advancesPerGroup: number,
-  hasBronze: boolean,
-  activeCourts: number,
-): TimeEstimate {
-  const zero = {
-    matchMinutes: matchMinutes(playoffGames),
-    groupMinutes: 0,
-    playoffMinutes: 0,
-    totalMinutes: 0,
-  };
-  if (teamsPerGroup.length === 0 || activeCourts < 1) return zero;
-
-  // Each group runs on its own courts in parallel; the group stage is over
-  // when the slowest group is.
-  const groupMins = groupStageMinutes(
-    teamsPerGroup,
-    courtsPerGroup,
-    groupGamesPerMatch
-  );
-
-  const playoffMinPerMatch = matchMinutes(playoffGames);
-  let playoffMinutes = 0;
-  if (advancesPerGroup > 0 && numGroups > 0) {
-    const totalAdvancing = advancesPerGroup * numGroups;
-    // Walk the real round sequence — a stage can span several rounds (a 12-team
-    // bracket plays a play-in round AND a quarter-final round), and each round
-    // costs its own slot on court.
-    for (const round of playoffRoundPlan(totalAdvancing, hasBronze)) {
-      playoffMinutes +=
-        Math.ceil(round.matches / activeCourts) * playoffMinPerMatch;
-    }
-  }
-
-  return {
-    matchMinutes: playoffMinPerMatch,
-    groupMinutes: groupMins,
-    playoffMinutes,
-    totalMinutes: groupMins + playoffMinutes,
-  };
 }
 
 function fmtTime(minutes: number): string {
@@ -213,6 +164,11 @@ export function StartView({
 
   const [numGroups, setNumGroups] = useState(2);
   const [baseGamesPerMatch, setBaseGamesPerMatch] = useState(5);
+  // "games" = host sets the match length and sees the finish time;
+  // "time" = host sets the time available and the match length is solved.
+  const [lengthMode, setLengthMode] = useState<"games" | "time">("games");
+  const [budgetHours, setBudgetHours] = useState(3);
+  const [budgetMins, setBudgetMins] = useState(0);
   // Playoff matches have their own length — they're single elimination, so the
   // group-stage time balancing has nothing to say about them. Follows the base
   // value until the host edits it.
@@ -413,16 +369,38 @@ export function StartView({
   // Use selected courts if any; fall back to the suggested count for estimates
   // before the host has picked courts.
   const activeCourtsForEstimate = selectedCourts.size > 0 ? selectedCourts.size : suggestedTotalCourts;
-  const estimate = estimateTournamentTime(
-    teamsPerGroupArray,
-    effectiveCourtsPerGroup,
-    groupGames,
-    playoffGames,
-    numGroups,
-    advancesPerGroup,
-    hasBronze,
-    Math.max(1, activeCourtsForEstimate),
+  const scheduleShape: ScheduleShape = useMemo(
+    () => ({
+      teamsPerGroup: teamsPerGroupArray,
+      courtsPerGroup: effectiveCourtsPerGroup,
+      advancesPerGroup,
+      hasBronze,
+      activeCourts: Math.max(1, activeCourtsForEstimate),
+    }),
+    [
+      teamsPerGroupArray,
+      effectiveCourtsPerGroup,
+      advancesPerGroup,
+      hasBronze,
+      activeCourtsForEstimate,
+    ]
   );
+  const estimate = estimateTournamentTime(scheduleShape, groupGames, playoffGames);
+
+  // Time-budget mode: the host says when the hall has to be free and the
+  // match length is solved backwards from that. Everything downstream still
+  // hangs off baseGamesPerMatch, so this only has to set that one value.
+  const budgetMinutes = budgetHours * 60 + budgetMins;
+  const budgetSolution = useMemo(
+    () => solveGamesForBudget(budgetMinutes, scheduleShape),
+    [budgetMinutes, scheduleShape]
+  );
+  useEffect(() => {
+    if (lengthMode !== "time") return;
+    setTouchedGroups((prev) => (prev.size === 0 ? prev : new Set()));
+    setPlayoffTouched(false);
+    setBaseGamesPerMatch(budgetSolution.games);
+  }, [lengthMode, budgetSolution.games]);
 
   const allGamesValid = groupGames.every((g) => g >= 1);
   // Every group needs at least 2 teams — a lone team plays no matches, never
@@ -737,9 +715,15 @@ export function StartView({
                       baseGamesPerMatch, presetTeams, presetCourts
                     );
                     const presetEst = estimateTournamentTime(
-                      presetTeams, presetCourts, presetGroupGames, playoffGames,
-                      p.groups, p.advances, hasBronze,
-                      Math.max(1, activeCourtsForEstimate),
+                      {
+                        teamsPerGroup: presetTeams,
+                        courtsPerGroup: presetCourts,
+                        advancesPerGroup: p.advances,
+                        hasBronze,
+                        activeCourts: Math.max(1, activeCourtsForEstimate),
+                      },
+                      presetGroupGames,
+                      playoffGames
                     );
                     return (
                       <button
@@ -793,21 +777,101 @@ export function StartView({
             )}
           </div>
           <div>
-            <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
-              Games per match, tiebreak vid {baseGamesPerMatch - 1}-{baseGamesPerMatch - 1}
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={baseGamesPerMatch}
-              onChange={(e) =>
-                setBaseGamesPerMatch(
-                  Math.max(1, parseInt(e.target.value || "1", 10))
-                )
-              }
-              className="w-32 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
-            />
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {([
+                { value: "games", label: "Sätt matchlängd", desc: "Få sluttiden" },
+                { value: "time", label: "Sätt tid", desc: "Få matchlängden" },
+              ] as const).map((opt) => {
+                const active = lengthMode === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setLengthMode(opt.value)}
+                    aria-pressed={active}
+                    className="text-left rounded-lg border px-3 py-2 transition"
+                    style={active
+                      ? { borderColor: accent, backgroundColor: `${accent}10` }
+                      : { borderColor: "#e4e4e7" }
+                    }
+                  >
+                    <div className="text-sm font-medium" style={active ? { color: accent } : undefined}>
+                      {opt.label}
+                    </div>
+                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{opt.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {lengthMode === "games" ? (
+              <>
+                <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
+                  Games per match, tiebreak vid {baseGamesPerMatch - 1}-{baseGamesPerMatch - 1}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={baseGamesPerMatch}
+                  onChange={(e) =>
+                    setBaseGamesPerMatch(
+                      Math.max(1, parseInt(e.target.value || "1", 10))
+                    )
+                  }
+                  className="w-32 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
+                />
+              </>
+            ) : (
+              <>
+                <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
+                  Tid tillgänglig, inklusive slutspel
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={24}
+                    value={budgetHours}
+                    onChange={(e) =>
+                      setBudgetHours(Math.max(0, Math.min(24, parseInt(e.target.value || "0", 10))))
+                    }
+                    className="w-20 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100 tabular-nums"
+                  />
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">h</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    step={15}
+                    value={budgetMins}
+                    onChange={(e) =>
+                      setBudgetMins(Math.max(0, Math.min(59, parseInt(e.target.value || "0", 10))))
+                    }
+                    className="w-20 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100 tabular-nums"
+                  />
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">min</span>
+                </div>
+                {budgetSolution.fits ? (
+                  <p className="text-xs mt-1" style={{ color: accent }}>
+                    → {budgetSolution.games} games per match, tiebreak vid{" "}
+                    {budgetSolution.games - 1}-{budgetSolution.games - 1} · klart på ~
+                    {fmtTime(budgetSolution.minutes)}
+                    {budgetSolution.slackMinutes > 0 && (
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {" "}({fmtTime(budgetSolution.slackMinutes)} marginal)
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Ryms inte — även kortast möjliga match (1 game) tar ~
+                    {fmtTime(budgetSolution.minutes)}. Lägg till banor, färre lag
+                    eller mindre slutspel.
+                  </p>
+                )}
+              </>
+            )}
             {numGroups > 1 && (
               <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
                 Grupper som annars blir klara tidigare spelar längre matcher, så
@@ -1111,6 +1175,19 @@ export function StartView({
                 ~{fmtTime(estimate.totalMinutes)}
               </div>
             </div>
+            {lengthMode === "time" && (() => {
+              const over = estimate.totalMinutes - budgetMinutes;
+              return (
+                <p
+                  className="text-xs mt-2"
+                  style={{ color: over > 0 ? "#d97706" : accent }}
+                >
+                  {over > 0
+                    ? `~${fmtTime(over)} över din tid på ${fmtTime(budgetMinutes)}.`
+                    : `~${fmtTime(-over)} marginal mot din tid på ${fmtTime(budgetMinutes)}.`}
+                </p>
+              );
+            })()}
             {selectedCourts.size === 0 && (
               <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-2">
                 Baserat på {activeCourtsForEstimate} rekommenderade {activeCourtsForEstimate === 1 ? "bana" : "banor"} — välj banor nedan för exaktare uppskattning.
