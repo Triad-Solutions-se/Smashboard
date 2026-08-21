@@ -921,6 +921,7 @@ export function StartView({
                   const actual = estimate.totalMinutes;
                   const slack = budgetMinutes - actual;
                   return (
+                  <>
                   <p className="text-xs mt-1" style={{ color: slack < 0 ? "#d97706" : accent }}>
                     → {baseGamesPerMatch} games per match, tiebreak vid{" "}
                     {baseGamesPerMatch - 1}-{baseGamesPerMatch - 1} · klart på ~
@@ -932,6 +933,26 @@ export function StartView({
                         : `${fmtTime(slack)} marginal`})
                     </span>
                   </p>
+                  {/* The budget, not the venue template, sets the length in
+                      this mode. Say so when the two disagree — otherwise the
+                      templates quietly stop applying the moment a host picks a
+                      tighter slot. */}
+                  {fullTeamCount >= 2 &&
+                    recommendedGames(fullTeamCount) !== baseGamesPerMatch && (
+                      <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+                        Er mall för {fullTeamCount} lag säger först till{" "}
+                        {recommendedGames(fullTeamCount)} — tiden räcker till{" "}
+                        {baseGamesPerMatch}.{" "}
+                        <button
+                          type="button"
+                          onClick={() => setLengthMode("games")}
+                          className="underline hover:text-zinc-600 dark:hover:text-zinc-300"
+                        >
+                          Följ mallen
+                        </button>
+                      </p>
+                    )}
+                  </>
                   );
                 })() : (
                   <p className="text-xs text-amber-600 mt-1">
