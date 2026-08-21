@@ -709,86 +709,83 @@ export function StartView({
           <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Inställningar</h2>
 
           {fullTeamCount >= 4 && (() => {
-            const presets = getPresets(fullTeamCount);
-            if (presets.length === 0) return null;
+            // One recommendation, not a wall of them: the venue's own template
+            // when there is one for this field size, else the best generic
+            // layout. Everything else is reachable with the sliders below.
+            const p = getPresets(fullTeamCount)[0];
+            if (!p) return null;
+            const total = p.groups * p.advances;
+            const active =
+              numGroups === p.groups && advancesPerGroup === p.advances;
+            // Estimate the preset's own team and court split, so the time shown
+            // is the one it would actually produce if applied.
+            const base = Math.floor(fullTeamCount / p.groups);
+            const rem = fullTeamCount % p.groups;
+            const presetTeams = Array.from({ length: p.groups }, (_, i) =>
+              base + (i < rem ? 1 : 0)
+            );
+            const presetCourts = Array.from({ length: p.groups }, (_, i) =>
+              Math.max(
+                1,
+                Math.floor(activeCourtsForEstimate / p.groups) +
+                  (i < activeCourtsForEstimate % p.groups ? 1 : 0)
+              )
+            );
+            const presetEst = estimateTournamentTime(
+              {
+                teamsPerGroup: presetTeams,
+                courtsPerGroup: presetCourts,
+                advancesPerGroup: p.advances,
+                hasBronze,
+                activeCourts: Math.max(1, activeCourtsForEstimate),
+              },
+              autoBalanceGroupGames(baseGamesPerMatch, presetTeams, presetCourts),
+              playoffGames
+            );
             return (
-              <div>
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
-                  Rekommenderat upplägg
-                  {presets.some((p) => p.fromVenue) && (
-                    <span className="font-normal text-zinc-400 dark:text-zinc-500">
-                      {" "}· ★ = er egen mall för {fullTeamCount} lag
-                    </span>
-                  )}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {presets.map((p) => {
-                    const total = p.groups * p.advances;
-                    const active = numGroups === p.groups && advancesPerGroup === p.advances;
-                    // Use auto-balanced games-per-group for the preset's team
-                    // distribution rather than the current selection — that way
-                    // a preset's time estimate reflects the per-group balancing
-                    // it would produce if selected.
-                    const presetBase = Math.floor(fullTeamCount / p.groups);
-                    const presetRem = fullTeamCount % p.groups;
-                    const presetTeams = Array.from({ length: p.groups }, (_, i) =>
-                      presetBase + (i < presetRem ? 1 : 0)
-                    );
-                    // Split the available courts as evenly as the preset's
-                    // groups allow, so its estimate reflects the court split
-                    // it would actually get.
-                    const presetCourts = Array.from({ length: p.groups }, (_, i) =>
-                      Math.max(
-                        1,
-                        Math.floor(activeCourtsForEstimate / p.groups) +
-                          (i < activeCourtsForEstimate % p.groups ? 1 : 0)
-                      )
-                    );
-                    const presetGroupGames = autoBalanceGroupGames(
-                      baseGamesPerMatch, presetTeams, presetCourts
-                    );
-                    const presetEst = estimateTournamentTime(
-                      {
-                        teamsPerGroup: presetTeams,
-                        courtsPerGroup: presetCourts,
-                        advancesPerGroup: p.advances,
-                        hasBronze,
-                        activeCourts: Math.max(1, activeCourtsForEstimate),
-                      },
-                      presetGroupGames,
-                      playoffGames
-                    );
-                    return (
-                      <button
-                        key={`${p.groups}-${p.advances}`}
-                        type="button"
-                        onClick={() => {
-                          setNumGroups(p.groups);
-                          setAdvancesPerGroup(p.advances);
-                          if (p.advances === 0) setHasBronze(false);
-                        }}
-                        className="px-3 py-1.5 rounded-full border text-xs font-medium transition"
-                        style={active
-                          ? { backgroundColor: accent, borderColor: accent, color: "#fff" }
-                          : { borderColor: "#d4d4d8", color: "#52525b" }
-                        }
-                      >
-                        {p.fromVenue && <span className="mr-1">★</span>}
-                        {p.groups} grupper × {p.advances} vidare
-                        <span className="ml-1.5 opacity-70">· {stageLabel(total)}</span>
-                        <span className="ml-1.5 opacity-60">· ~{fmtTime(presetEst.totalMinutes)}</span>
-                      </button>
-                    );
-                  })}
+              <button
+                type="button"
+                onClick={() => {
+                  setNumGroups(p.groups);
+                  setAdvancesPerGroup(p.advances);
+                  if (p.advances === 0) setHasBronze(false);
+                }}
+                aria-pressed={active}
+                className="w-full text-left rounded-lg border px-3 py-2.5 transition"
+                style={active
+                  ? { borderColor: accent, backgroundColor: `${accent}10` }
+                  : { borderColor: "#e4e4e7" }
+                }
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium" style={active ? { color: accent } : undefined}>
+                    {p.groups} grupper × {p.advances} vidare
+                  </span>
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
+                    ~{fmtTime(presetEst.totalMinutes)}
+                  </span>
                 </div>
-              </div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  {p.fromVenue ? `Er mall för ${fullTeamCount} lag` : "Rekommenderat"}
+                  {" · "}
+                  {stageLabel(total)}
+                  {active ? "" : " · tryck för att använda"}
+                </div>
+              </button>
             );
           })()}
 
           <div>
-            <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
-              Antal grupper: {numGroups}
-            </label>
+            <div className="flex items-baseline justify-between gap-2 mb-1">
+              <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Antal grupper: {numGroups}
+              </label>
+              {teamsPerGroupArray.length > 0 && (
+                <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                  {fullTeamCount} lag · {teamsPerGroupArray.join(" / ")} per grupp
+                </span>
+              )}
+            </div>
             <input
               type="range"
               min={1}
@@ -798,12 +795,6 @@ export function StartView({
               className="w-full"
               disabled={fullTeamCount < 1}
             />
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
-              {fullTeamCount} fulla lag tillgängliga
-              {teamsPerGroupArray.length > 0 && (
-                <> · <span className="font-medium">{teamsPerGroupArray.join(" / ")} lag per grupp</span></>
-              )}
-            </p>
             {!groupsBigEnough && fullTeamCount >= 2 && (
               <p className="text-xs text-amber-600 mt-1">
                 Varje grupp behöver minst 2 lag — max {Math.floor(fullTeamCount / 2)} grupper med {fullTeamCount} lag.
@@ -811,10 +802,10 @@ export function StartView({
             )}
           </div>
           <div>
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5 mb-2">
               {([
-                { value: "games", label: "Sätt matchlängd", desc: "Få sluttiden" },
-                { value: "time", label: "Sätt tid", desc: "Få matchlängden" },
+                { value: "games", label: "Matchlängd" },
+                { value: "time", label: "Sluttid" },
               ] as const).map((opt) => {
                 const active = lengthMode === opt.value;
                 return (
@@ -823,16 +814,13 @@ export function StartView({
                     type="button"
                     onClick={() => setLengthMode(opt.value)}
                     aria-pressed={active}
-                    className="text-left rounded-lg border px-3 py-2 transition"
+                    className="px-3 py-1 rounded-md text-xs font-medium transition"
                     style={active
-                      ? { borderColor: accent, backgroundColor: `${accent}10` }
-                      : { borderColor: "#e4e4e7" }
+                      ? { backgroundColor: accent, color: "#fff" }
+                      : { color: "#71717a" }
                     }
                   >
-                    <div className="text-sm font-medium" style={active ? { color: accent } : undefined}>
-                      {opt.label}
-                    </div>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{opt.desc}</div>
+                    {opt.label}
                   </button>
                 );
               })}
@@ -948,13 +936,17 @@ export function StartView({
             )}
             {numGroups > 1 && (
               <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
-                Grupper som annars blir klara tidigare spelar längre matcher, så
-                att alla grupper håller på ungefär lika länge. Antal matcher kan
-                skilja sig — speltiden ska stämma.
+                Mindre grupper spelar längre matcher så alla slutar samtidigt.
               </p>
             )}
           </div>
 
+          <details className="group">
+            <summary className="text-xs font-medium text-zinc-500 dark:text-zinc-400 cursor-pointer list-none flex items-center gap-1 select-none">
+              <span className="transition-transform group-open:rotate-90">›</span>
+              Finjustera matchlängder
+            </summary>
+            <div className="mt-3 space-y-4">
           <div>
             <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
               Games per match i slutspel
@@ -971,8 +963,7 @@ export function StartView({
               className="w-32 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
             />
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
-              Gäller kvarts-, semi-, brons- och final. Oberoende av gruppspelets
-              tidsutjämning.
+              Gäller kvarts, semi, brons och final.
               {playoffTouched && (
                 <>
                   {" "}
@@ -1076,6 +1067,8 @@ export function StartView({
               </div>
             </div>
           )}
+            </div>
+          </details>
         </section>
 
         <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4 space-y-4">
@@ -1159,8 +1152,22 @@ export function StartView({
           )}
 
           {advancesPerGroup > 0 && courts.length > 0 && (
-            <div className="pt-2 border-t border-zinc-100 space-y-3">
-              <p className="text-xs font-medium text-zinc-500">Banor för slutspel</p>
+            <details className="group pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <summary className="text-xs font-medium text-zinc-500 dark:text-zinc-400 cursor-pointer list-none flex items-center gap-1 select-none">
+                <span className="transition-transform group-open:rotate-90">›</span>
+                Banor för slutspel
+                <span className="font-normal text-zinc-400 dark:text-zinc-500">
+                  {(() => {
+                    const picked = [qfCourtIds, sfCourtIds, finalCourtIds]
+                      .map((set) => set.size)
+                      .filter((n) => n > 0);
+                    return picked.length > 0
+                      ? `· ${picked.join(" / ")} valda`
+                      : "· inga valda än";
+                  })()}
+                </span>
+              </summary>
+              <div className="mt-3 space-y-3">
               {(() => {
                 const totalAdvancing = advancesPerGroup * numGroups;
                 const stateFor: Record<PlayoffStageKey, [Set<string>, React.Dispatch<React.SetStateAction<Set<string>>>]> = {
@@ -1220,7 +1227,8 @@ export function StartView({
                   );
                 });
               })()}
-            </div>
+              </div>
+            </details>
           )}
         </section>
 
