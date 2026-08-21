@@ -126,11 +126,16 @@ describe("balanceGroupGamesByTime", () => {
 
 describe("matchMinutes", () => {
   it("models a first-to-N match, not an exactly-N one", () => {
-    // first-to-5 runs 5-9 games; the neutral assumption is 7.
-    expect(expectedGamesPlayed(5)).toBe(7);
-    expect(matchMinutes(5)).toBe(26); // 7 games x 3 min + 5 min changeover
-    expect(expectedGamesPlayed(10)).toBe(14.5);
-    expect(matchMinutes(10)).toBe(49);
+    // first-to-5 runs 5-9 games; Bon Padel's lopsided sets put it near 5.6.
+    expect(expectedGamesPlayed(5)).toBeCloseTo(5.6);
+    expect(matchMinutes(5)).toBe(22); // 5.6 games x 3 min + 5 min changeover
+    expect(expectedGamesPlayed(10)).toBeCloseTo(11.35);
+    expect(matchMinutes(10)).toBe(39);
+    // Still strictly more than the target — a whitewash is the floor, not the
+    // expectation. This is the property the whole correction turned on.
+    for (let t = 2; t <= 12; t++) {
+      expect(expectedGamesPlayed(t)).toBeGreaterThan(t);
+    }
   });
 
   it("is bounded by the whitewash and the maximum-length match", () => {

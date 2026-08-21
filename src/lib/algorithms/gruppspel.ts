@@ -200,11 +200,15 @@ export const MAX_GAMES_PER_MATCH = 99;
 // FLOOR of a match's length, never its length.
 //
 // TYPICAL_LOSER_SHARE is how much of the target the losing side is assumed to
-// reach. 0.5 is the neutral assumption: a uniformly distributed loser score
-// averages (N-1)/2, and it reproduces the reference set length below. Drop it
-// towards 0 if a venue's matches run lopsided (0 models a whitewash every
-// time, which is what this file assumed before).
-export const TYPICAL_LOSER_SHARE = 0.5;
+// reach. 0.5 would be the neutral assumption — a uniformly distributed loser
+// score averages (N-1)/2 — but Bon Padel report that their sets run lopsided
+// (6-1 and 6-2 far more often than 6-4), and that a first-to-6 match takes
+// about 25 minutes on court end to end. 0.15 is what reproduces that:
+//   6 + 5(0.15) = 6.75 games -> 6.75(3) + 5 = 25 min
+// Raise it towards 0.5 for a venue with evenly matched fields; 0 would model a
+// whitewash every time, which is what this file assumed before it modelled the
+// loser's games at all.
+export const TYPICAL_LOSER_SHARE = 0.15;
 
 // Games actually played in a first-to-`target` match, on average.
 export function expectedGamesPlayed(target: number): number {

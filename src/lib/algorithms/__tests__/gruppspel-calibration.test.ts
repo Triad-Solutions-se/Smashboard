@@ -47,17 +47,24 @@ describe("wall-clock model against real padel timings", () => {
     expect(twoSets).toBeLessThanOrEqual(65);
   });
 
-  it("rules out 4 min/game — it would overrun both aggregate figures", () => {
-    // Documents why the single-game band's midpoint is not what we use: the
-    // set and match figures already include changeovers, so they measure the
-    // marginal cost of a game, and 4 breaks both.
-    const at4 = expectedGamesPlayed(6) * 4;
-    expect(at4).toBeGreaterThan(30); // a set would run long
-    expect(2 * at4 + MATCH_OVERHEAD_MIN).toBeGreaterThan(65); // so would a match
+  it("reproduces Bon Padel's own observation of a first-to-6 match", () => {
+    // The venue times a first-to-6 at roughly 25 minutes on court, end to end,
+    // and reports their sets run lopsided. This is the tightest empirical
+    // anchor the model has — it is what fixes TYPICAL_LOSER_SHARE.
+    expect(matchMinutes(6)).toBeGreaterThanOrEqual(23);
+    expect(matchMinutes(6)).toBeLessThanOrEqual(27);
+  });
+
+  it("rules out 4 min/game against that observation", () => {
+    // With lopsided sets the aggregate bands alone no longer exclude 4 (a set
+    // would be 27 min, still inside 18-30). The venue's 25-minute match does:
+    // 4 min/game puts it at 32.
+    const at4 = expectedGamesPlayed(6) * 4 + MATCH_OVERHEAD_MIN;
+    expect(at4).toBeGreaterThan(27);
   });
 
   it("prices the format the app actually runs", () => {
-    expect(matchMinutes(5)).toBe(26); // first to 5, ~7 games
-    expect(matchMinutes(6)).toBe(31); // first to 6, ~8.5 games
+    expect(matchMinutes(5)).toBe(22); // first to 5, ~5.6 games
+    expect(matchMinutes(6)).toBe(25); // first to 6, ~6.75 games
   });
 });
