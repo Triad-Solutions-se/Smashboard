@@ -435,6 +435,20 @@ export function StartView({
   // Every group needs at least 2 teams — a lone team plays no matches, never
   // completes its group, and would leave the session unfinishable.
   const groupsBigEnough = fullTeamCount >= numGroups * 2;
+  // Knockout stages that will actually be played but have no courts assigned.
+  // Only the stages that exist — a 4-team playoff has no quarter-final to
+  // assign — and only once there are courts to choose from.
+  const missingPlayoffCourtStages: PlayoffStageKey[] =
+    advancesPerGroup > 0 && courts.length > 0
+      ? playoffStageCourts(advancesPerGroup * numGroups, hasBronze)
+          .map((st) => st.stage)
+          .filter((stage) => {
+            const set =
+              stage === "qf" ? qfCourtIds : stage === "sf" ? sfCourtIds : finalCourtIds;
+            return set.size === 0;
+          })
+      : [];
+
   // Everything that must be true before a session can start, each with the
   // sentence shown to the host. A silently greyed-out button leaves them
   // hunting for what is wrong — especially now that some settings sit inside
@@ -449,6 +463,13 @@ export function StartView({
   else if (!allGroupsHaveCourts) blockers.push("Varje grupp behöver minst en bana.");
   if (!allGamesValid || baseGamesPerMatch < 1 || playoffGames < 1)
     blockers.push("Matchlängd måste vara minst 1 game.");
+  if (missingPlayoffCourtStages.length > 0) {
+    blockers.push(
+      `Välj banor för slutspelets ${missingPlayoffCourtStages
+        .map((st) => STAGE_LABELS[st].toLowerCase())
+        .join(", ")}.`
+    );
+  }
 
   const canSubmit = blockers.length === 0;
 
@@ -1181,7 +1202,10 @@ export function StartView({
           )}
 
           {advancesPerGroup > 0 && courts.length > 0 && (
-            <details className="group pt-2 border-t border-zinc-100 dark:border-zinc-800">
+            <details
+              open={missingPlayoffCourtStages.length > 0}
+              className="group pt-2 border-t border-zinc-100 dark:border-zinc-800"
+            >
               <summary className="text-xs font-medium text-zinc-500 dark:text-zinc-400 cursor-pointer list-none flex items-center gap-1 select-none">
                 <span className="transition-transform group-open:rotate-90">›</span>
                 Banor för slutspel

@@ -95,6 +95,40 @@ export function autoBracketSizes(totalAdvancing: number): number[] {
   return [totalAdvancing];
 }
 
+// The courts a host assigned to a knockout stage during setup. Bronze runs
+// alongside the final, so it shares the final's courts.
+//
+// Returns null when nothing was stored for that stage — tournaments created
+// before the pickers existed, and any stage the host left blank — so callers
+// can keep their own fallback rather than silently getting every court.
+export type StageCourtSelection = {
+  qf_court_ids?: string[] | null;
+  sf_court_ids?: string[] | null;
+  final_court_ids?: string[] | null;
+};
+
+export function courtsForStage(
+  stage: MatchStage,
+  selection: StageCourtSelection,
+  allCourts: Court[]
+): Court[] | null {
+  let ids: string[] | null | undefined;
+  switch (stage) {
+    case "quarter_final": ids = selection.qf_court_ids; break;
+    case "semi_final": ids = selection.sf_court_ids; break;
+    case "final":
+    case "bronze": ids = selection.final_court_ids; break;
+    default: return null;
+  }
+  if (!ids || ids.length === 0) return null;
+  const wanted = new Set(ids);
+  // Filter the venue's court list rather than mapping the stored ids, so the
+  // result keeps court order and drops ids for courts that have since been
+  // deleted.
+  const picked = allCourts.filter((c) => wanted.has(c.id));
+  return picked.length > 0 ? picked : null;
+}
+
 // Largest teams-per-group that advances into a bracket this file can actually
 // build. A single bracket holds up to 16 (top seeds take byes and the rest play
 // in); past that only clean multiples of 8 work, splitting into A-, B-,

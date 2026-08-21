@@ -33,6 +33,8 @@ import {
 import {
   generateFirstKORound,
   generateNextKORound,
+  courtsForStage,
+  firstKOStage,
   generateSeededFirstRound,
   generateAutoFirstRound,
   autoBracketSeedOrders,
@@ -757,6 +759,7 @@ function HostInner({
         if (entrants.length < 2) continue;
         const M = entrants.length;
         const stage: MatchStage = M <= 2 ? "final" : M <= 4 ? "semi_final" : "quarter_final";
+        const stageCourts = courtsForStage(stage, t, c) ?? c;
 
         const newMatches: Omit<TournamentMatch, "id" | "created_at">[] = [];
         for (let i = 0; i < M; i += 2) {
@@ -766,11 +769,13 @@ function HostInner({
           const feederMatch = matchesThisRound.find(
             (mm) => winnerOf(mm) === a || winnerOf(mm) === b
           );
+          // Inherit the feeder's court only when it belongs to this stage.
           const inherited =
             feederMatch?.court_id != null
-              ? c.find((cc) => cc.id === feederMatch.court_id) ?? null
+              ? stageCourts.find((cc) => cc.id === feederMatch.court_id) ?? null
               : null;
-          const court = inherited ?? c[(i / 2) % Math.max(1, c.length)] ?? null;
+          const court =
+            inherited ?? stageCourts[(i / 2) % Math.max(1, stageCourts.length)] ?? null;
           newMatches.push({
             tournament_id: t.id,
             group_id: null,
@@ -789,7 +794,9 @@ function HostInner({
         if (t.has_bronze && stage === "final" && matchesThisRound.length === 2) {
           const l1 = loserOf(matchesThisRound[0]);
           const l2 = loserOf(matchesThisRound[1]);
-          const bronzeCourt = c[Math.floor(c.length / 2)] ?? c[0] ?? null;
+          const bronzeCourts = courtsForStage("bronze", t, c) ?? c;
+          const bronzeCourt =
+            bronzeCourts[Math.floor(bronzeCourts.length / 2)] ?? bronzeCourts[0] ?? null;
           newMatches.push({
             tournament_id: t.id,
             group_id: null,
@@ -910,10 +917,16 @@ function HostInner({
         if (relevantByeIds.length > 0) {
           if (!roundMatches.every((m) => m.status === "completed")) continue;
           if (nextRoundMatches.length > 0) continue;
+          // generateNextKORound derives the stage from the entrant count;
+          // derive it here too so the round lands on the courts the host
+          // assigned to that stage during setup.
+          const entrants = relevantByeIds.length + roundMatches.length;
+          const nextStage: MatchStage =
+            entrants === 2 ? "final" : entrants <= 4 ? "semi_final" : "quarter_final";
           const next = generateNextKORound(
             roundMatches,
             relevantByeIds,
-            c,
+            courtsForStage(nextStage, t, c) ?? c,
             t.id,
             t.has_bronze
           );
@@ -952,7 +965,13 @@ function HostInner({
           const nextTotal = Math.floor(n / 2);
           const stage: MatchStage =
             nextTotal === 1 ? "final" : nextTotal <= 2 ? "semi_final" : "quarter_final";
-          const court = c.find((cc) => cc.id === m1.court_id) ?? c[i % Math.max(1, c.length)] ?? null;
+          // Prefer the stage's assigned courts; inheriting the feeder's court
+          // only makes sense when that court is one of them.
+          const stageCourts = courtsForStage(stage, t, c) ?? c;
+          const court =
+            stageCourts.find((cc) => cc.id === m1.court_id) ??
+            stageCourts[i % Math.max(1, stageCourts.length)] ??
+            null;
 
           newMatches.push({
             tournament_id: t.id,
@@ -973,8 +992,12 @@ function HostInner({
             const l2 = getKOLoserId(m2);
             if (l1 == null) throw new KOTieError(m1);
             if (l2 == null) throw new KOTieError(m2);
+            const bronzeCourts = courtsForStage("bronze", t, c) ?? c;
             const bronzeCourt =
-              c.find((cc) => cc.id === m2.court_id) ?? c[Math.floor(c.length / 2)] ?? c[0] ?? null;
+              bronzeCourts.find((cc) => cc.id === m2.court_id) ??
+              bronzeCourts[Math.floor(bronzeCourts.length / 2)] ??
+              bronzeCourts[0] ??
+              null;
             newMatches.push({
               tournament_id: t.id,
               group_id: null,
@@ -1628,10 +1651,21 @@ function PlayoffPanel({
   // first N courts (one per playoff match) so the host doesn't have to pick
   // them again. Fewer than recommended is fine; matches without a court are
   // queued and assigned as courts free up.
-  const chosenCourts = useMemo(
-    () => courts.slice(0, Math.max(1, recommendedCount)),
-    [courts, recommendedCount]
-  );
+  // Courts the host assigned to the opening knockout stage during setup. When
+  // they left it blank, fall back to the first N courts (one per match) so the
+  // playoff still runs without a second round of picking.
+  const chosenCourts = useMemo(() => {
+    const totalAdvancing = groupStandings.reduce(
+      (sum, g) => sum + g.standings.length,
+      0
+    );
+    const assigned = courtsForStage(
+      firstKOStage(totalAdvancing),
+      tournament,
+      courts
+    );
+    return assigned ?? courts.slice(0, Math.max(1, recommendedCount));
+  }, [courts, recommendedCount, tournament, groupStandings]);
   const canGenerate = chosenCourts.length > 0 && previewMatchups.length > 0;
 
   async function generate() {
