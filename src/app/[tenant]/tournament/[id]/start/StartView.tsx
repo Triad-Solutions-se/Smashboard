@@ -23,6 +23,10 @@ import {
 import {
   generateGroupMatches,
   totalRoundsFor,
+  balanceGroupGamesByTime,
+  groupMinutes,
+  groupStageMinutes,
+  matchMinutes,
 } from "@/lib/algorithms/gruppspel";
 import { autoBracketSizes } from "@/lib/algorithms/knockout";
 import { PlayerCombobox } from "@/components/PlayerCombobox";
@@ -73,60 +77,47 @@ type TimeEstimate = {
   totalMinutes: number;
 };
 
-// Round-robin matches-per-team for a group of size n. Even n: every team plays
-// every round so n-1 matches; odd n: one bye per team across n rounds → still
-// n-1 matches played per team. Used to balance per-group games_per_match so
-// each player gets roughly the same total games regardless of group size.
-function matchesPerTeamFor(n: number): number {
-  return Math.max(1, n - 1);
-}
-
-// Auto-balance per-group games_per_match so total game count per player stays
-// roughly equal across groups. The biggest group keeps the base value; smaller
-// groups (fewer matches per team) get longer matches.
-function autoBalanceGroupGames(base: number, teamsPerGroup: number[]): number[] {
-  if (teamsPerGroup.length === 0) return [];
-  const mpt = teamsPerGroup.map(matchesPerTeamFor);
-  const maxMpt = Math.max(...mpt);
-  const targetTotal = maxMpt * base;
-  return mpt.map((m) => Math.max(1, Math.round(targetTotal / m)));
+// Auto-balance per-group games_per_match so every group is on court for
+// roughly the same wall-clock time. Groups don't need the same number of
+// matches — they should just finish together — so the balancing works from
+// each group's team count AND its court count, not from match counts.
+function autoBalanceGroupGames(
+  base: number,
+  teamsPerGroup: number[],
+  courtsPerGroup: number[]
+): number[] {
+  return balanceGroupGamesByTime(base, teamsPerGroup, courtsPerGroup);
 }
 
 function estimateTournamentTime(
-  fullTeamCount: number,
+  teamsPerGroup: number[],
+  courtsPerGroup: number[],
+  groupGamesPerMatch: number[],
+  playoffGames: number,
   numGroups: number,
   advancesPerGroup: number,
   hasBronze: boolean,
-  groupGamesPerMatch: number[],
   activeCourts: number,
 ): TimeEstimate {
-  const baseGames = groupGamesPerMatch[0] ?? 5;
-  const matchMinutes = baseGames * 3 + 5;
-  const zero = { matchMinutes, groupMinutes: 0, playoffMinutes: 0, totalMinutes: 0 };
+  const zero = {
+    matchMinutes: matchMinutes(playoffGames),
+    groupMinutes: 0,
+    playoffMinutes: 0,
+    totalMinutes: 0,
+  };
+  if (teamsPerGroup.length === 0 || activeCourts < 1) return zero;
 
-  if (fullTeamCount < 2 || numGroups < 1 || activeCourts < 1) return zero;
+  // Each group runs on its own courts in parallel; the group stage is over
+  // when the slowest group is.
+  const groupMins = groupStageMinutes(
+    teamsPerGroup,
+    courtsPerGroup,
+    groupGamesPerMatch
+  );
 
-  const teamsPerGroup = Math.floor(fullTeamCount / numGroups);
-  if (teamsPerGroup < 2) return zero;
-
-  const roundsPerGroup = teamsPerGroup % 2 === 0 ? teamsPerGroup - 1 : teamsPerGroup;
-  const matchesPerRoundPerGroup = Math.floor(teamsPerGroup / 2);
-  const courtsPerGroup = Math.max(1, Math.floor(activeCourts / numGroups));
-  const slotsPerRound = Math.ceil(matchesPerRoundPerGroup / courtsPerGroup);
-
-  // Sum each group's wall-clock minutes using its own games_per_match.
-  let groupMinutes = 0;
-  for (let i = 0; i < numGroups; i++) {
-    const g = groupGamesPerMatch[i] ?? baseGames;
-    const perMatch = g * 3 + 5;
-    groupMinutes = Math.max(groupMinutes, roundsPerGroup * slotsPerRound * perMatch);
-  }
-
-  // Playoffs use the longest game length (= the "base" KO target).
-  const playoffGames = Math.max(...groupGamesPerMatch, baseGames);
-  const playoffMinPerMatch = playoffGames * 3 + 5;
+  const playoffMinPerMatch = matchMinutes(playoffGames);
   let playoffMinutes = 0;
-  if (advancesPerGroup > 0) {
+  if (advancesPerGroup > 0 && numGroups > 0) {
     const totalAdvancing = advancesPerGroup * numGroups;
     const { qf, sf, final } = playoffMatchCounts(totalAdvancing, hasBronze);
     if (qf > 0) playoffMinutes += Math.ceil(qf / activeCourts) * playoffMinPerMatch;
@@ -134,7 +125,12 @@ function estimateTournamentTime(
     if (final > 0) playoffMinutes += Math.ceil(final / activeCourts) * playoffMinPerMatch;
   }
 
-  return { matchMinutes, groupMinutes, playoffMinutes, totalMinutes: groupMinutes + playoffMinutes };
+  return {
+    matchMinutes: playoffMinPerMatch,
+    groupMinutes: groupMins,
+    playoffMinutes,
+    totalMinutes: groupMins + playoffMinutes,
+  };
 }
 
 function fmtTime(minutes: number): string {
@@ -148,8 +144,10 @@ function getPresets(n: number): Preset[] {
   const out: Preset[] = [];
   if (n < 4) return out;
 
+  // A group needs at least 2 teams to have a match at all, so a preset is only
+  // feasible when the field can fill every group twice over.
   const feasible = (g: number, a: number) =>
-    g >= 1 && a >= 1 && g <= n && a <= Math.floor(n / g);
+    g >= 1 && a >= 1 && g <= Math.floor(n / 2) && a <= Math.floor(n / g);
 
   // Presets that produce a clean 8-team QF (or multiples thereof, splitting
   // into A/B/C-slutspel automatically) are surfaced first since they're the
@@ -229,6 +227,11 @@ export function StartView({
 
   const [numGroups, setNumGroups] = useState(2);
   const [baseGamesPerMatch, setBaseGamesPerMatch] = useState(5);
+  // Playoff matches have their own length — they're single elimination, so the
+  // group-stage time balancing has nothing to say about them. Follows the base
+  // value until the host edits it.
+  const [playoffGames, setPlayoffGames] = useState(5);
+  const [playoffTouched, setPlayoffTouched] = useState(false);
   // Per-group games_per_match. Index = group sort_order (0..numGroups-1).
   // Auto-balanced from baseGamesPerMatch + actual teams-per-group so each
   // player gets roughly the same total games. Cells the host edits manually
@@ -361,13 +364,25 @@ export function StartView({
     [suggestedCourtsPerGroup]
   );
 
-  // Rebalance groupGames whenever the base value or per-group team counts
-  // shift. Cells the host has touched stay put; auto-derived cells follow.
+  // Courts each group will actually have — the host's assignment once courts
+  // are picked, the recommendation before that. Drives the time balancing.
+  const effectiveCourtsPerGroup = useMemo(
+    () =>
+      teamsPerGroupArray.map(
+        (_, i) => groupCourtCounts[i] || suggestedCourtsPerGroup[i] || 1
+      ),
+    [teamsPerGroupArray, groupCourtCounts, suggestedCourtsPerGroup]
+  );
+
+  // Rebalance groupGames whenever the base value, the per-group team counts or
+  // the court split shift. Cells the host has touched stay put; auto-derived
+  // cells follow.
   useEffect(() => {
     setGroupGames((prev) => {
       const auto = autoBalanceGroupGames(
         baseGamesPerMatch,
-        teamsPerGroupArray.length > 0 ? teamsPerGroupArray : Array(numGroups).fill(2)
+        teamsPerGroupArray.length > 0 ? teamsPerGroupArray : Array(numGroups).fill(2),
+        effectiveCourtsPerGroup.length > 0 ? effectiveCourtsPerGroup : Array(numGroups).fill(1)
       );
       const next: number[] = [];
       for (let i = 0; i < numGroups; i++) {
@@ -376,34 +391,57 @@ export function StartView({
       }
       return next;
     });
-  }, [baseGamesPerMatch, teamsPerGroupArray, numGroups, touchedGroups]);
+  }, [baseGamesPerMatch, teamsPerGroupArray, effectiveCourtsPerGroup, numGroups, touchedGroups]);
+
+  // Keep the group count inside what the field supports (2 teams minimum per
+  // group) — the roster can shrink after the host has already picked a count.
+  const maxGroups = Math.max(1, Math.min(8, Math.floor(fullTeamCount / 2)));
+  useEffect(() => {
+    setNumGroups((prev) => (prev > maxGroups ? maxGroups : prev));
+  }, [maxGroups]);
+
+  // Playoff length follows the base value until the host sets it explicitly.
+  useEffect(() => {
+    if (!playoffTouched) setPlayoffGames(baseGamesPerMatch);
+  }, [baseGamesPerMatch, playoffTouched]);
 
   // Group count changes invalidate manual overrides (group identities shift).
   useEffect(() => {
     setTouchedGroups(new Set());
   }, [numGroups]);
 
-  // The "tournament-level" games_per_match acts as the fallback used by KO
-  // matches and any UI without a group context. Use the max so playoff matches
-  // have at least as much room as the longest group match.
-  const tournamentGamesPerMatch = useMemo(
-    () => (groupGames.length > 0 ? Math.max(...groupGames) : baseGamesPerMatch),
-    [groupGames, baseGamesPerMatch]
+  // The "tournament-level" games_per_match is the playoff target: knockout
+  // matches are single elimination, so the group-stage time balancing (which
+  // stretches a small group's matches) must not leak into them.
+  const tournamentGamesPerMatch = playoffGames;
+
+  // Per-group wall-clock, so the host can see the groups land together.
+  const groupMinutesPerGroup = useMemo(
+    () =>
+      teamsPerGroupArray.map((n, i) =>
+        groupMinutes(n, effectiveCourtsPerGroup[i] ?? 1, groupGames[i] ?? baseGamesPerMatch)
+      ),
+    [teamsPerGroupArray, effectiveCourtsPerGroup, groupGames, baseGamesPerMatch]
   );
 
   // Use selected courts if any; fall back to the suggested count for estimates
   // before the host has picked courts.
   const activeCourtsForEstimate = selectedCourts.size > 0 ? selectedCourts.size : suggestedTotalCourts;
   const estimate = estimateTournamentTime(
-    fullTeamCount,
+    teamsPerGroupArray,
+    effectiveCourtsPerGroup,
+    groupGames,
+    playoffGames,
     numGroups,
     advancesPerGroup,
     hasBronze,
-    groupGames,
     Math.max(1, activeCourtsForEstimate),
   );
 
   const allGamesValid = groupGames.every((g) => g >= 1);
+  // Every group needs at least 2 teams — a lone team plays no matches, never
+  // completes its group, and would leave the session unfinishable.
+  const groupsBigEnough = fullTeamCount >= numGroups * 2;
   const canSubmit =
     formatSupported &&
     fullTeamCount >= 2 &&
@@ -412,8 +450,9 @@ export function StartView({
     allGroupsHaveCourts &&
     allGamesValid &&
     baseGamesPerMatch >= 1 &&
+    playoffGames >= 1 &&
     numGroups >= 1 &&
-    fullTeamCount >= numGroups;
+    groupsBigEnough;
 
   function setGroupGameAt(idx: number, value: number) {
     setGroupGames((prev) => {
@@ -472,6 +511,7 @@ export function StartView({
           JSON.stringify({
             numGroups,
             gamesPerMatch: baseGamesPerMatch,
+            playoffGames,
             advancesPerGroup,
             hasBronze,
             selectedCourts: [...selectedCourts],
@@ -697,10 +737,23 @@ export function StartView({
                     const presetTeams = Array.from({ length: p.groups }, (_, i) =>
                       presetBase + (i < presetRem ? 1 : 0)
                     );
-                    const presetGroupGames = autoBalanceGroupGames(baseGamesPerMatch, presetTeams);
+                    // Split the available courts as evenly as the preset's
+                    // groups allow, so its estimate reflects the court split
+                    // it would actually get.
+                    const presetCourts = Array.from({ length: p.groups }, (_, i) =>
+                      Math.max(
+                        1,
+                        Math.floor(activeCourtsForEstimate / p.groups) +
+                          (i < activeCourtsForEstimate % p.groups ? 1 : 0)
+                      )
+                    );
+                    const presetGroupGames = autoBalanceGroupGames(
+                      baseGamesPerMatch, presetTeams, presetCourts
+                    );
                     const presetEst = estimateTournamentTime(
-                      fullTeamCount, p.groups, p.advances, hasBronze,
-                      presetGroupGames, Math.max(1, activeCourtsForEstimate),
+                      presetTeams, presetCourts, presetGroupGames, playoffGames,
+                      p.groups, p.advances, hasBronze,
+                      Math.max(1, activeCourtsForEstimate),
                     );
                     return (
                       <button
@@ -735,7 +788,7 @@ export function StartView({
             <input
               type="range"
               min={1}
-              max={Math.max(1, Math.min(8, fullTeamCount))}
+              max={maxGroups}
               value={numGroups}
               onChange={(e) => setNumGroups(parseInt(e.target.value, 10))}
               className="w-full"
@@ -743,10 +796,15 @@ export function StartView({
             />
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
               {fullTeamCount} fulla lag tillgängliga
-              {numGroups >= 1 && fullTeamCount >= numGroups && (
-                <> · <span className="font-medium">{Math.floor(fullTeamCount / numGroups)} lag per grupp</span></>
+              {teamsPerGroupArray.length > 0 && (
+                <> · <span className="font-medium">{teamsPerGroupArray.join(" / ")} lag per grupp</span></>
               )}
             </p>
+            {!groupsBigEnough && fullTeamCount >= 2 && (
+              <p className="text-xs text-amber-600 mt-1">
+                Varje grupp behöver minst 2 lag — max {Math.floor(fullTeamCount / 2)} grupper med {fullTeamCount} lag.
+              </p>
+            )}
           </div>
           <div>
             <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
@@ -766,9 +824,47 @@ export function StartView({
             />
             {numGroups > 1 && (
               <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
-                Mindre grupper spelar längre matcher så att totaltid per spelare jämnas ut.
+                Grupper som annars blir klara tidigare spelar längre matcher, så
+                att alla grupper håller på ungefär lika länge. Antal matcher kan
+                skilja sig — speltiden ska stämma.
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="text-xs font-medium block mb-1 text-zinc-500 dark:text-zinc-400">
+              Games per match i slutspel
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={99}
+              value={playoffGames}
+              onChange={(e) => {
+                setPlayoffTouched(true);
+                setPlayoffGames(Math.max(1, parseInt(e.target.value || "1", 10)));
+              }}
+              className="w-32 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100"
+            />
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+              Gäller kvarts-, semi-, brons- och final. Oberoende av gruppspelets
+              tidsutjämning.
+              {playoffTouched && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlayoffTouched(false);
+                      setPlayoffGames(baseGamesPerMatch);
+                    }}
+                    className="underline hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    Följ gruppspelet
+                  </button>
+                </>
+              )}
+            </p>
           </div>
 
           {numGroups > 1 && (
@@ -787,7 +883,10 @@ export function StartView({
                           baseGamesPerMatch,
                           teamsPerGroupArray.length > 0
                             ? teamsPerGroupArray
-                            : Array(numGroups).fill(2)
+                            : Array(numGroups).fill(2),
+                          effectiveCourtsPerGroup.length > 0
+                            ? effectiveCourtsPerGroup
+                            : Array(numGroups).fill(1)
                         )
                       );
                     }}
@@ -828,8 +927,11 @@ export function StartView({
                         }
                         className="w-full px-2 py-1.5 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 dark:text-zinc-100 text-sm tabular-nums"
                       />
-                      {!isTouched && teamsHere !== undefined && (
-                        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">auto</p>
+                      {teamsHere !== undefined && (
+                        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">
+                          {isTouched ? "" : "auto · "}
+                          ~{fmtTime(groupMinutesPerGroup[idx] ?? 0)}
+                        </p>
                       )}
                     </div>
                   );
@@ -979,7 +1081,7 @@ export function StartView({
           <section className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
             <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Tidsuppskattning</h2>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              <div className="text-zinc-500 dark:text-zinc-400">Per match</div>
+              <div className="text-zinc-500 dark:text-zinc-400">Per slutspelsmatch</div>
               <div className="font-medium tabular-nums">~{fmtTime(estimate.matchMinutes)}</div>
 
               <div className="text-zinc-500 dark:text-zinc-400">Gruppspel</div>

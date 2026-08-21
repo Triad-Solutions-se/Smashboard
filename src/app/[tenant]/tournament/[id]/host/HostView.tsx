@@ -455,7 +455,12 @@ function HostInner({
   // --- Playoff derived state ---
   const groupMatches = useMemo(() => matches.filter((m) => m.stage === "group"), [matches]);
   const koMatches = useMemo(() => matches.filter((m) => m.stage !== "group"), [matches]);
-  const allGroupDone = groupMatches.length > 0 && groupMatches.every((m) => m.status === "completed");
+  // Group play counts as done when every group match is complete. A tournament
+  // with no group matches at all (legacy data where a group held a single team)
+  // would otherwise be stuck in `group_active` forever — no playoff, no way to
+  // finish the session — so treat it as done rather than dead-ending the host.
+  const allGroupDone =
+    groups.length > 0 && groupMatches.every((m) => m.status === "completed");
   const hasKO = koMatches.length > 0;
   const advancesPerGroup = tournament.advances_per_group ?? 0;
 

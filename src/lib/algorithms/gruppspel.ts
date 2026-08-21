@@ -162,3 +162,83 @@ export function totalRoundsFor(numTeamsPerGroup: number[]): number {
     ...numTeamsPerGroup.map((n) => (n % 2 === 0 ? n - 1 : n))
   );
 }
+
+// ---------------------------------------------------------------------------
+// Wall-clock model
+//
+// Groups run in parallel on their own courts, so what a player actually cares
+// about is time on site, not match count. A group of n teams needs
+// `roundsForGroup(n)` rounds; each round it must run floor(n/2) matches, and
+// with fewer courts than that the matches queue up on the courts it has. The
+// product is the number of sequential match slots the group occupies.
+// ---------------------------------------------------------------------------
+
+export const MINUTES_PER_GAME = 3;
+export const MATCH_OVERHEAD_MIN = 5;
+export const MAX_GAMES_PER_MATCH = 99;
+
+export function matchMinutes(games: number): number {
+  return games * MINUTES_PER_GAME + MATCH_OVERHEAD_MIN;
+}
+
+// Rounds a round-robin group needs. Odd team counts add a bye round.
+export function roundsForGroup(numTeams: number): number {
+  if (numTeams < 2) return 0;
+  return numTeams % 2 === 0 ? numTeams - 1 : numTeams;
+}
+
+// Sequential match slots the group occupies on its own courts.
+export function groupSlots(numTeams: number, courts: number): number {
+  if (numTeams < 2) return 0;
+  const perRound = Math.floor(numTeams / 2);
+  return roundsForGroup(numTeams) * Math.ceil(perRound / Math.max(1, courts));
+}
+
+export function groupMinutes(
+  numTeams: number,
+  courts: number,
+  games: number
+): number {
+  return groupSlots(numTeams, courts) * matchMinutes(games);
+}
+
+// Picks per-group games_per_match so every group is on court for roughly the
+// same wall-clock time. The group needing the most slots (most teams, fewest
+// courts) keeps the host's base value and sets the target window; groups that
+// would otherwise finish early stretch their matches to fill the same window.
+// Balancing time — not match or game count — is deliberate: groups may play a
+// different number of matches, they should just finish together.
+export function balanceGroupGamesByTime(
+  base: number,
+  teamsPerGroup: number[],
+  courtsPerGroup: number[]
+): number[] {
+  if (teamsPerGroup.length === 0) return [];
+  const slots = teamsPerGroup.map((n, i) =>
+    groupSlots(n, courtsPerGroup[i] ?? 1)
+  );
+  const target = Math.max(0, ...slots.map((s) => s * matchMinutes(base)));
+  if (target <= 0) return teamsPerGroup.map(() => base);
+  return slots.map((s) => {
+    if (s <= 0) return base;
+    const games = Math.round(
+      (target / s - MATCH_OVERHEAD_MIN) / MINUTES_PER_GAME
+    );
+    return Math.min(MAX_GAMES_PER_MATCH, Math.max(1, games));
+  });
+}
+
+// Longest group's wall-clock minutes — the group stage is done when it is.
+export function groupStageMinutes(
+  teamsPerGroup: number[],
+  courtsPerGroup: number[],
+  gamesPerGroup: number[]
+): number {
+  if (teamsPerGroup.length === 0) return 0;
+  return Math.max(
+    0,
+    ...teamsPerGroup.map((n, i) =>
+      groupMinutes(n, courtsPerGroup[i] ?? 1, gamesPerGroup[i] ?? 1)
+    )
+  );
+}

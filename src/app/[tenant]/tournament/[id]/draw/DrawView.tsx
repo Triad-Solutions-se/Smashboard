@@ -22,24 +22,13 @@ import {
 import {
   generateGroupMatches,
   totalRoundsFor,
+  balanceGroupGamesByTime,
 } from "@/lib/algorithms/gruppspel";
-
-// Auto-balance per-group games_per_match from team counts so each player gets
-// roughly the same total games regardless of group size.
-function autoBalanceGroupGamesForDraw(
-  base: number,
-  teamsPerGroup: number[]
-): number[] {
-  if (teamsPerGroup.length === 0) return [];
-  const mpt = teamsPerGroup.map((n) => Math.max(1, n - 1));
-  const maxMpt = Math.max(...mpt);
-  const target = maxMpt * base;
-  return mpt.map((m) => Math.max(1, Math.round(target / m)));
-}
 
 type Stash = {
   numGroups: number;
   gamesPerMatch: number;
+  playoffGames?: number;
   advancesPerGroup: number;
   hasBronze: boolean;
   selectedCourts: string[];
@@ -180,9 +169,29 @@ export function DrawView({
     return m;
   }, [effectiveTeams, assignments, numGroups]);
 
+  // Courts each group has, from the split the host made on /start.
+  const courtsPerGroup = useMemo(() => {
+    if (!stash) return [] as number[];
+    const counts = Array<number>(numGroups).fill(0);
+    for (const id of stash.selectedCourts) {
+      const g = stash.courtGroupIdx[id];
+      if (typeof g === "number" && g >= 0 && g < numGroups) counts[g]++;
+    }
+    // A group with no court of its own falls back to all selected courts —
+    // mirror that here so the time balancing matches what gets scheduled.
+    return counts.map((c) => c || stash.selectedCourts.length || 1);
+  }, [stash, numGroups]);
+
   const allAssigned = unassignedTeams.length === 0;
-  const everyGroupHasTeams = teamsPerGroup.every((c) => c >= 1);
-  const canSubmit = !!stash && allAssigned && everyGroupHasTeams && !submitting;
+  // Every group needs at least 2 teams (a lone team plays nothing and leaves
+  // the session unfinishable), and sizes must be within one of each other so
+  // no group ends up with a wildly different schedule.
+  const smallestGroup = teamsPerGroup.length > 0 ? Math.min(...teamsPerGroup) : 0;
+  const largestGroup = teamsPerGroup.length > 0 ? Math.max(...teamsPerGroup) : 0;
+  const everyGroupHasTeams = smallestGroup >= 2;
+  const groupsEven = largestGroup - smallestGroup <= 1;
+  const canSubmit =
+    !!stash && allAssigned && everyGroupHasTeams && groupsEven && !submitting;
 
   function moveTeam(teamId: string, target: DropZone) {
     setAssignments((prev) => ({
@@ -223,9 +232,10 @@ export function DrawView({
       // 3. Insert groups. Auto-balance per-group games_per_match from the
       //    host's actual placement so smaller groups get longer matches.
       const placedTeamsPerGroup = buckets.map((b) => b.length);
-      const balancedGroupGames = autoBalanceGroupGamesForDraw(
+      const balancedGroupGames = balanceGroupGamesByTime(
         stash.gamesPerMatch,
-        placedTeamsPerGroup
+        placedTeamsPerGroup,
+        courtsPerGroup
       );
       const insertedGroups = await insertGroups(
         buckets.map((_, idx) => ({
@@ -279,11 +289,9 @@ export function DrawView({
       // 6. Activate tournament.
       const teamsPerGroupArr = buckets.map((b) => b.length);
       const totalRounds = totalRoundsFor(teamsPerGroupArr);
-      // Use the longest per-group target as the tournament-level fallback
-      // (drives KO match validation).
-      const tournamentGamesPerMatch = balancedGroupGames.length > 0
-        ? Math.max(...balancedGroupGames)
-        : stash.gamesPerMatch;
+      // The tournament-level value is the playoff target. Knockout matches are
+      // single elimination, so the group-stage time balancing must not leak in.
+      const tournamentGamesPerMatch = stash.playoffGames ?? stash.gamesPerMatch;
       await activateTournament(tournament.id, {
         num_groups: buckets.length,
         games_per_match: tournamentGamesPerMatch,
@@ -377,6 +385,15 @@ export function DrawView({
           accent={accent}
         />
 
+        {allAssigned && !(everyGroupHasTeams && groupsEven) && (
+          <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+            {!everyGroupHasTeams
+              ? "Varje grupp behöver minst 2 lag — ett ensamt lag får inga matcher."
+              : "Grupperna får skilja sig med högst 1 lag, annars går speltiden inte att jämna ut."}
+            {" "}Rekommenderat: {recommendedPerGroup.join(" / ")} lag.
+          </p>
+        )}
+
         <div
           className="grid gap-3"
           style={{
@@ -433,8 +450,10 @@ export function DrawView({
             !allAssigned
               ? "Fördela alla lag först"
               : !everyGroupHasTeams
-                ? "Varje grupp behöver minst ett lag"
-                : "Starta sessionen"
+                ? "Varje grupp behöver minst 2 lag"
+                : !groupsEven
+                  ? "Grupperna får skilja sig med högst 1 lag"
+                  : "Starta sessionen"
           }
         >
           {submitting ? "Startar…" : "Starta session →"}
