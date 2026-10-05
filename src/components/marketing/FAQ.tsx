@@ -47,10 +47,10 @@ export function FAQ() {
             <p className="mt-4 text-zinc-600">
               Hittar du inte svaret? Skicka ett mail till{" "}
               <a
-                href="mailto:kontakt@triadsolutions.se"
+                href="mailto:kontakt@mcasolutions.se"
                 className="font-medium text-emerald-700 underline-offset-4 hover:underline"
               >
-                kontakt@triadsolutions.se
+                kontakt@mcasolutions.se
               </a>{" "}
               så svarar vi inom dagen.
             </p>

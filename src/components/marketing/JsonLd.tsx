@@ -9,14 +9,14 @@ const organization = {
   alternateName: "Triad",
   url: ORG_URL,
   logo: `${SITE_URL}/icons/logo.svg`,
-  email: "kontakt@triadsolutions.se",
+  email: "kontakt@mcasolutions.se",
   description:
     "Triad Solutions bygger Smashboard — ett white-label turneringssystem för padelhallar.",
   sameAs: [ORG_URL, SITE_URL],
   contactPoint: [
     {
       "@type": "ContactPoint",
-      email: "kontakt@triadsolutions.se",
+      email: "kontakt@mcasolutions.se",
       contactType: "sales",
       areaServed: "SE",
       availableLanguage: ["Swedish", "English"],

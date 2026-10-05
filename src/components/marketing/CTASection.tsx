@@ -30,17 +30,17 @@ export function CTASection() {
 
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
-              href="mailto:kontakt@triadsolutions.se?subject=Demo%20av%20Smashboard"
+              href="mailto:kontakt@mcasolutions.se?subject=Demo%20av%20Smashboard"
               className="inline-flex items-center justify-center gap-2 rounded-full bg-[#9fc843] px-7 py-3.5 text-base font-semibold text-slate-950 shadow-lg transition hover:bg-[#b3da5d]"
             >
               Boka demo
               <span aria-hidden>→</span>
             </a>
             <a
-              href="mailto:kontakt@triadsolutions.se"
+              href="mailto:kontakt@mcasolutions.se"
               className="font-mono text-sm text-zinc-400 transition hover:text-white"
             >
-              kontakt@triadsolutions.se
+              kontakt@mcasolutions.se
             </a>
           </div>
 

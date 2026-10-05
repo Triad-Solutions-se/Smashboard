@@ -61,10 +61,10 @@ export function Footer() {
             <ul className="mt-4 space-y-3 text-sm">
               <li>
                 <a
-                  href="mailto:kontakt@triadsolutions.se"
+                  href="mailto:kontakt@mcasolutions.se"
                   className="hover:text-emerald-700"
                 >
-                  kontakt@triadsolutions.se
+                  kontakt@mcasolutions.se
                 </a>
               </li>
               <li>
