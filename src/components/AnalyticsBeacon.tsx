@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
-const ENDPOINT = "https://portal.triadsolutions.se/api/analytics/track";
+const ENDPOINT = "https://portal.mcasolutions.se/api/analytics/track";
 
 function getSessionId(): string {
   let sid = localStorage.getItem("triad_sid");

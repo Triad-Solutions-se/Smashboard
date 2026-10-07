@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { requireSuperAdmin } from "@/lib/auth/require";
 import { getSupabaseAuthServer } from "@/lib/supabase/auth-server";
+import { APP_DOMAIN } from "@/lib/domains";
 
 // Server actions for super-admin tenant provisioning. The "invite owner"
 // flow needs auth.admin (service role); the rest go through the user's own
@@ -86,7 +87,7 @@ export async function registerCustomer(input: {
     .single();
   if (tErr || !tenant) return { ok: false, error: tErr?.message ?? "Kunde inte skapa anläggning" };
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_DOMAIN ?? "triadsolutions.se";
+  const baseUrl = APP_DOMAIN;
   const redirectTo = `https://${slug}.${baseUrl}/auth/callback?next=${encodeURIComponent("/auth/set-password")}`;
 
   const { data: invite, error: invErr } = await admin.auth.admin.inviteUserByEmail(
@@ -228,7 +229,7 @@ export async function inviteOwner(input: {
     .single();
   if (tErr || !tenant) return { ok: false, error: "Anläggning hittades inte" };
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_DOMAIN ?? "triadsolutions.se";
+  const baseUrl = APP_DOMAIN;
   const redirectTo = `https://${tenant.slug}.${baseUrl}/auth/callback?next=${encodeURIComponent("/auth/set-password")}`;
 
   // inviteUserByEmail creates the user and emails a magic-link invite

@@ -1,17 +1,18 @@
-const SITE_URL = "https://smashboard.triadsolutions.se";
-const ORG_URL = "https://triadsolutions.se";
+const SITE_URL = "https://smashboard.mcasolutions.se";
+const ORG_URL = "https://www.mcasolutions.se";
 
 const organization = {
   "@context": "https://schema.org",
   "@type": "Organization",
   "@id": `${ORG_URL}#organization`,
-  name: "Triad Solutions",
-  alternateName: "Triad",
+  name: "MCA Solutions",
+  legalName: "MCA Solutions AB",
+  alternateName: "Triad Solutions",
   url: ORG_URL,
   logo: `${SITE_URL}/icons/logo.svg`,
   email: "kontakt@mcasolutions.se",
   description:
-    "Triad Solutions bygger Smashboard — ett white-label turneringssystem för padelhallar.",
+    "MCA Solutions bygger Smashboard — ett white-label turneringssystem för padelhallar.",
   sameAs: [ORG_URL, SITE_URL],
   contactPoint: [
     {
@@ -46,7 +47,7 @@ const softwareApplication = {
   inLanguage: "sv-SE",
   provider: {
     "@type": "Organization",
-    name: "Triad Solutions",
+    name: "MCA Solutions",
     url: SITE_URL,
   },
   featureList: [

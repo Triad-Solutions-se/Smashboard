@@ -737,7 +737,7 @@ function Header({
   const tenantLogoSrc = darkMode
     ? (tenant.logo_url_dark || tenant.logo_url)
     : tenant.logo_url;
-  const triadLogoSrc = darkMode ? "/icons/triad-logo-white.png" : "/icons/triad-logo.png";
+  const mcaLogoSrc = darkMode ? "/icons/mca-logo-white.png" : "/icons/mca-logo.png";
 
   return (
     <header className={`px-[2vw] h-[9vh] grid grid-cols-3 items-stretch gap-4 border-b ${border}`}>
@@ -761,7 +761,7 @@ function Header({
         </div>
       </div>
 
-      {/* Center: brand logo × Triad Solutions logo — fills full banner height */}
+      {/* Center: brand logo × MCA Solutions logo — fills full banner height */}
       <div className="flex items-center justify-center gap-[1.5vw]" style={{ height: "9vh" }}>
         {tenantLogoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -791,8 +791,8 @@ function Header({
         </span>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={triadLogoSrc}
-          alt="Triad Solutions"
+          src={mcaLogoSrc}
+          alt="MCA Solutions"
           style={{
             height: "7.8vh",
             width: "auto",

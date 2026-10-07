@@ -57,7 +57,7 @@ export function WhiteLabel() {
               Smashboard syns aldrig för dina gäster. Hallen får en egen
               subdomän — t.ex.{" "}
               <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-sm text-zinc-800">
-                hallen.triadsolutions.se
+                hallen.mcasolutions.se
               </code>{" "}
               — med er logga, era färger och er identitet på storskärmen.
             </p>
@@ -65,7 +65,7 @@ export function WhiteLabel() {
               {[
                 "Egen subdomän inkluderad",
                 "Logga och accentfärg från era riktlinjer",
-                "Inga Triad- eller Smashboard-loggor i display-vyn",
+                "Inga MCA- eller Smashboard-loggor i display-vyn",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <span className="mt-1 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">

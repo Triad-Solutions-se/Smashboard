@@ -16,7 +16,7 @@ export function Footer() {
               />
             </div>
             <p className="mt-4 max-w-xs text-sm text-zinc-600">
-              Turneringssystem för padelhallar. En produkt från Triad
+              Turneringssystem för padelhallar. En produkt från MCA
               Solutions.
             </p>
           </div>
@@ -77,7 +77,7 @@ export function Footer() {
         </div>
 
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-zinc-200 pt-6 text-xs text-zinc-500 sm:flex-row sm:items-center">
-          <p>© {new Date().getFullYear()} Triad Solutions. Alla rättigheter förbehållna.</p>
+          <p>© {new Date().getFullYear()} MCA Solutions AB. Alla rättigheter förbehållna.</p>
           <p className="font-mono uppercase tracking-[0.2em]">
             Made in Sweden
           </p>

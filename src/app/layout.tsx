@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://smashboard.triadsolutions.se"),
+  metadataBase: new URL("https://smashboard.mcasolutions.se"),
   title: {
     default:
       "Smashboard – turneringssystem för padel på storskärm",
@@ -43,9 +43,9 @@ export const metadata: Metadata = {
     "smashboard",
     "triad solutions",
   ],
-  authors: [{ name: "Triad Solutions", url: "https://triadsolutions.se" }],
-  creator: "Triad Solutions",
-  publisher: "Triad Solutions",
+  authors: [{ name: "MCA Solutions", url: "https://www.mcasolutions.se" }],
+  creator: "MCA Solutions",
+  publisher: "MCA Solutions",
   alternates: {
     canonical: "/",
     languages: {
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "sv_SE",
-    url: "https://smashboard.triadsolutions.se",
+    url: "https://smashboard.mcasolutions.se",
     siteName: "Smashboard",
     title:
       "Smashboard — Turneringssystem för padelhallar | Mexicano & Americano live på TV",

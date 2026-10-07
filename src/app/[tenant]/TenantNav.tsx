@@ -120,12 +120,12 @@ export function TenantNav({ slug, name, primaryColor, logoUrl, logoUrlDark }: Pr
 
         <div className="flex-1" />
 
-        {/* Triad logo — centered, always visible */}
+        {/* MCA logo — centered, always visible */}
         <div className="absolute left-1/2 -translate-x-1/2 pointer-events-none block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/icons/triad-logo.png"
-            alt="Triad Solutions"
+            src="/icons/mca-logo.png"
+            alt="MCA Solutions"
             className="h-7 w-auto dark:[filter:brightness(0)_invert(1)]"
           />
         </div>

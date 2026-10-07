@@ -1,6 +1,6 @@
 # Smashboard
 
-White-label padel tournament management platform. Each padel venue gets a custom subdomain (e.g. bonpadel.triadsolutions.se). Hosts run the app on a laptop and cast it to a TV via HDMI.
+White-label padel tournament management platform. Each padel venue gets a custom subdomain (e.g. bonpadel.mcasolutions.se). Hosts run the app on a laptop and cast it to a TV via HDMI.
 
 ## Tech Stack
 - Next.js 15 App Router
@@ -12,7 +12,7 @@ White-label padel tournament management platform. Each padel venue gets a custom
 - Multi-tenant via subdomain routing (Next.js middleware reads host header → resolves tenant slug)
 - TV display is the primary output — large text, SVG court illustrations, Supabase realtime auto-refresh
 - Host view for score entry and round advancement
-- Super admin at /admin for Triad Solutions to provision tenants
+- Super admin at /admin for MCA Solutions to provision tenants
 
 ## Tournament Formats
 - Mexicano: dynamic partners, sorted by cumulative points each round
@@ -25,7 +25,7 @@ White-label padel tournament management platform. Each padel venue gets a custom
 - /[tenant]/tournament/new — tournament setup wizard
 - /[tenant]/players — player roster management
 - /[tenant]/settings — venue branding & courts
-- /admin — super admin (Triad Solutions internal)
+- /admin — super admin (MCA Solutions internal)
 
 ## Supabase Tables
 tenants, courts, players, tournaments, tournament_players, tournament_courts, rounds, matches

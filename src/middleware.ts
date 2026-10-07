@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { APP_DOMAIN, LEGACY_APP_DOMAINS } from "@/lib/domains";
 
 // Subdomain routing + auth session refresh + route gating.
 //
-// Subdomain rewrite: bonpadel.triadsolutions.se/players → /bonpadel/players.
+// Subdomain rewrite: bonpadel.mcasolutions.se/players → /bonpadel/players.
 // Apex (and reserved subdomains www/admin) fall through unchanged.
 //
 // Auth: refreshes the Supabase session cookie on every request, then for
@@ -11,14 +12,27 @@ import { createServerClient } from "@supabase/ssr";
 // subdomain. Public routes (TV display, customer /play, /login itself,
 // /auth/callback) are unrestricted.
 
-const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN ?? "triadsolutions.se";
+// Legacy *.triadsolutions.se host → same subdomain + path on APP_DOMAIN.
+// The matcher below already skips /api and static files, so only page
+// requests are redirected (webhooks and assets keep working on old hosts).
+function legacyRedirect(req: NextRequest): NextResponse | null {
+  const hostname = (req.headers.get("host") ?? "").split(":")[0].toLowerCase();
+  for (const legacy of LEGACY_APP_DOMAINS) {
+    if (!hostname.endsWith(`.${legacy}`)) continue;
+    const sub = hostname.slice(0, -(legacy.length + 1));
+    if (!sub || sub.includes(".")) return null;
+    const target = new URL(`${req.nextUrl.pathname}${req.nextUrl.search}`, `https://${sub}.${APP_DOMAIN}`);
+    return NextResponse.redirect(target, 308);
+  }
+  return null;
+}
 
 function extractTenant(host: string | null): string | null {
   if (!host) return null;
   const hostname = host.split(":")[0].toLowerCase();
 
   // Subdomains that are NOT tenants — they fall through to apex (landing page).
-  // `smashboard` is the public marketing host (smashboard.triadsolutions.se).
+  // `smashboard` is the public marketing host (smashboard.mcasolutions.se).
   // `admin` is the super-admin console host. `www` is the canonical apex alias.
   const RESERVED = new Set(["www", "admin", "smashboard"]);
 
@@ -65,6 +79,9 @@ function isRootRoute(pathname: string): boolean {
 }
 
 export async function middleware(req: NextRequest) {
+  const legacy = legacyRedirect(req);
+  if (legacy) return legacy;
+
   const tenant = extractTenant(req.headers.get("host"));
   const pathname = req.nextUrl.pathname;
 

@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { registerCustomer, inviteOwner, deleteTenant, uploadLogo } from "./actions";
+import { APP_DOMAIN } from "@/lib/domains";
 
 export type CustomerRow = {
   id: string;
@@ -15,7 +16,6 @@ export type CustomerRow = {
   memberCount: number;
 };
 
-const APP_DOMAIN = "triadsolutions.se";
 
 export function AdminConsole({ customers }: { customers: CustomerRow[] }) {
   const router = useRouter();
@@ -128,7 +128,7 @@ export function AdminConsole({ customers }: { customers: CustomerRow[] }) {
           <div>
             <h1 className="text-2xl font-semibold">Smashboard Admin</h1>
             <p className="text-sm text-neutral-500">
-              Triad Solutions — {customers.length}{" "}
+              MCA Solutions — {customers.length}{" "}
               {customers.length === 1 ? "kund" : "kunder"}
             </p>
           </div>

@@ -2,7 +2,7 @@
 
 > Smashboard är ett white-label turneringssystem för padelhallar. Hosten skriver in resultat på sin laptop och allt visas live på en TV-skärm via HDMI. Stöder Mexicano, Americano och Lag-Mexicano.
 
-Smashboard byggs av Triad Solutions i Sverige. Produkten används av padelhallar som vill köra professionella turneringar utan kalkylark, manuella tabeller eller dyr utrustning. Varje hall får en egen subdomän (t.ex. minhall.triadsolutions.se), egen logga och egen accentfärg — Smashboards eget varumärke syns aldrig på storskärmen.
+Smashboard byggs av MCA Solutions i Sverige. Produkten används av padelhallar som vill köra professionella turneringar utan kalkylark, manuella tabeller eller dyr utrustning. Varje hall får en egen subdomän (t.ex. minhall.mcasolutions.se), egen logga och egen accentfärg — Smashboards eget varumärke syns aldrig på storskärmen.
 
 ## Vad gör Smashboard
 
@@ -37,7 +37,7 @@ En vanlig laptop med modern webbläsare (Chrome, Safari, Edge, Firefox) och en T
 ## Kontakt
 
 - E-post: kontakt@mcasolutions.se
-- Webbplats: https://triadsolutions.se
+- Webbplats: https://www.mcasolutions.se
 - Demo bokas via webbplatsen eller direkt via mail. Demon tar 20 minuter och visar systemet live.
 
 ## Vanliga frågor
@@ -54,4 +54,4 @@ En vanlig laptop med modern webbläsare (Chrome, Safari, Edge, Firefox) och en T
 
 ## Optional
 
-- [Hemsida](https://smashboard.triadsolutions.se): Produktöversikt, format, priser och bokning av demo.
+- [Hemsida](https://smashboard.mcasolutions.se): Produktöversikt, format, priser och bokning av demo.
