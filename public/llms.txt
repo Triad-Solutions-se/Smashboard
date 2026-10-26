@@ -32,7 +32,7 @@ En vanlig laptop med modern webbläsare (Chrome, Safari, Edge, Firefox) och en T
 - Byggd med Next.js 15 (App Router), Supabase (Postgres + Auth + Realtime) och Tailwind CSS.
 - Hostas på Vercel.
 - Multi-tenant via subdomän — Next.js middleware läser host-headern och slår upp tenant-slug.
-- All data lagras inom EU (Supabase Frankfurt). GDPR-kompatibel — hallen äger sin spelardata och kan exportera eller radera den.
+- All data lagras inom EU (Supabase Frankfurt).
 
 ## Kontakt
 

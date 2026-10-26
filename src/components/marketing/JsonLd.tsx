@@ -60,7 +60,7 @@ const softwareApplication = {
     "Egen subdomän",
     "Spelarregister",
     "Realtidssynk mellan host och display",
-    "GDPR-kompatibel datalagring inom EU",
+    "Datalagring inom EU",
   ],
   offers: [
     {
@@ -152,7 +152,7 @@ const faq = {
       name: "Var lagras spelardata?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "All data ligger inom EU (Supabase, Frankfurt). Smashboard är GDPR-kompatibel — hallen äger spelardata och kan exportera eller radera när som helst.",
+        text: "All data ligger inom EU (Supabase, Frankfurt).",
       },
     },
     {

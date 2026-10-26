@@ -20,7 +20,7 @@ const items = [
   },
   {
     q: "Var lagras spelardata?",
-    a: "All data ligger inom EU (Supabase, Frankfurt). Vi tar GDPR på största allvar — du äger spelardata och kan exportera eller radera när som helst.",
+    a: "All data ligger inom EU (Supabase, Frankfurt).",
   },
   {
     q: "Är det någon bindningstid?",
